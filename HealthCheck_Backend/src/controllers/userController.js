@@ -51,12 +51,13 @@ export async function getUsersTallerThan(req, res) {
   }
 }
 // Sign Up
+// Sign Up
 export async function signUp(req, res) {
   try {
     const { name, gender, email, age, password, height, weight, bmi } = req.body;
     const db = getDB();
 
-    // Kiểm tra email trùng
+    // Kiểm tra user đã tồn tại
     const existingUser = await db.collection("user").findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already exists" });
@@ -65,7 +66,26 @@ export async function signUp(req, res) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Thêm user
+    // ✅ Thiết lập mục tiêu sức khỏe mặc định
+    let health_goal;
+    if (gender.toLowerCase() === "male") {
+      health_goal = {
+        stepsGoal: 7500,
+        caloriesGoal: 2500,
+        workoutGoal: 120,
+        waterGoal: 2000,
+      };
+    } else {
+      // Mặc định là nữ nếu không phải male
+      health_goal = {
+        stepsGoal: 7500,
+        caloriesGoal: 2000,
+        workoutGoal: 120,
+        waterGoal: 2000,
+      };
+    }
+
+    // ✅ Lưu vào MongoDB
     const result = await db.collection("user").insertOne({
       name,
       gender,
@@ -75,18 +95,21 @@ export async function signUp(req, res) {
       height,
       weight,
       bmi,
-      health_goal: null,
+      health_goal,
       createdAt: new Date(),
     });
 
     res.status(201).json({
       message: "User created successfully",
       id: result.insertedId,
+      health_goal,
     });
   } catch (err) {
+    console.error("SignUp Error:", err);
     res.status(500).json({ error: err.message });
   }
 }
+
 
 
 export async function login(req, res) {
