@@ -43,7 +43,7 @@ export default function LoginScreen({ navigation }: Props) {
     }
 
     try {
-      const response = await fetch('https://health-check-deploy.onrender.com/users/login', {
+      const response = await fetch('https://nhom16-healthycheck.onrender.com/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
