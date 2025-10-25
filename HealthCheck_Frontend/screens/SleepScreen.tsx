@@ -292,6 +292,7 @@ export default function SleepScreen() {
                 height={220}
                 fromZero
                 yAxisSuffix="h"
+                yAxisLabel=""
                 chartConfig={chartConfig}
                 style={styles.chart}
                 withCustomBarColorFromData

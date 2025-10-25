@@ -24,6 +24,9 @@ export default function SignUpScreen({ navigation }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [age, setAge] = useState('');
+  const [gender, setGender] = useState('');
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -33,6 +36,34 @@ export default function SignUpScreen({ navigation }: Props) {
       Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  // ✅ Hàm đăng ký
+  async function handleSignUp() {
+    if (!name || !email || !password || !age || !gender) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    try {
+      const response = await fetch("https://health-check-deploy.onrender.com/users/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, age, gender }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(`Sign Up successful! Welcome, ${name}!`);
+        navigation.navigate("Login");
+      } else {
+        alert(data.error || "Sign Up failed");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Server error");
+    }
+  }
 
   return (
     <KeyboardAvoidingView
@@ -46,7 +77,7 @@ export default function SignUpScreen({ navigation }: Props) {
           <Text style={styles.brand}>KayTi</Text>
         </View>
 
-        {/* Khung trắng */}
+        {/* Card trắng */}
         <Animated.View
           style={[
             styles.card,
@@ -80,13 +111,29 @@ export default function SignUpScreen({ navigation }: Props) {
             onChangeText={setPassword}
           />
 
+          <TextInput
+            style={styles.input}
+            placeholder="Enter age"
+            placeholderTextColor="#aaa"
+            keyboardType="numeric"
+            value={age}
+            onChangeText={setAge}
+          />
 
+          <TextInput
+            style={styles.input}
+            placeholder="Enter gender"
+            placeholderTextColor="#aaa"
+            value={gender}
+            onChangeText={setGender}
+          />
 
           <Pressable
             style={({ pressed }) => [
               styles.button,
               pressed && { backgroundColor: '#1e3a8a' },
             ]}
+            onPress={handleSignUp}
           >
             <Text style={styles.buttonText}>Sign Up</Text>
           </Pressable>
@@ -96,7 +143,7 @@ export default function SignUpScreen({ navigation }: Props) {
             <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
               Sign in
             </Text>
-          </Text>  
+          </Text>
         </Animated.View>
       </LinearGradient>
     </KeyboardAvoidingView>
