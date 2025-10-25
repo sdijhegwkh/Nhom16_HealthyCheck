@@ -53,10 +53,10 @@ export async function getUsersTallerThan(req, res) {
 // Sign Up
 export async function signUp(req, res) {
   try {
-    const { name, gender, email, age, password } = req.body;
+    const { name, gender, email, age, password, height, weight, bmi } = req.body;
     const db = getDB();
 
-    // Kiểm tra user đã tồn tại chưa
+    // Kiểm tra email trùng
     const existingUser = await db.collection("user").findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already exists" });
@@ -65,25 +65,29 @@ export async function signUp(req, res) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Lưu user vào DB
+    // Thêm user
     const result = await db.collection("user").insertOne({
       name,
       gender,
       email,
       age,
       password: hashedPassword,
-      height: null,
-      weight: null,
-      bmi: null,
+      height,
+      weight,
+      bmi,
       health_goal: null,
       createdAt: new Date(),
     });
 
-    res.status(201).json({ message: "User created", id: result.insertedId });
+    res.status(201).json({
+      message: "User created successfully",
+      id: result.insertedId,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 }
+
 
 export async function login(req, res) {
   try {
