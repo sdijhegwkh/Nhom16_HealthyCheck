@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { IconProps } from "@expo/vector-icons/build/createIconSet";
 import BottomNav from "../components/BottomNav";
+import { useNavigation } from "@react-navigation/native";
 
 type OverviewItem = {
   label: string;
@@ -29,6 +30,7 @@ type BlogItem = {
 
 export default function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const navigation = useNavigation<any>();
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -69,8 +71,12 @@ export default function HomeScreen() {
         </LinearGradient>
 
         {/* Overview title (ra ngoài nền xanh) */}
-        <Text style={styles.overviewTitle}>Overview</Text>
-
+        <Text style={styles.overviewTitle}>Overview <Ionicons
+            name="stats-chart-outline"
+            size={26}
+            color="#2563eb"
+            style={{ marginLeft: 8 }}
+          /></Text> 
         {/* Health Score */}
         <View style={styles.healthCard}>
           <View>
@@ -93,15 +99,23 @@ export default function HomeScreen() {
         <View style={styles.cardContainer}>
           {overviewData.map((item) => {
             const IconComp = item.icon;
+            const isStep = item.label === "Steps";
+            const isSleep = item.label === "Sleep";
+
             return (
-              <View
+              <TouchableOpacity
                 key={item.label}
+                activeOpacity={0.8}
                 style={[styles.card, { backgroundColor: item.color }]}
+                onPress={() => {
+                  if (isStep) navigation.navigate("Steps"); // 👈 điều hướng sang StepScreen
+                  if (isSleep) navigation.navigate("Sleep"); // 👈 điều hướng sang SleepScreen
+                }}
               >
                 <IconComp name={item.iconName as any} size={32} color="#fff" />
                 <Text style={styles.cardLabel}>{item.label}</Text>
                 <Text style={styles.cardValue}>{item.value}</Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>

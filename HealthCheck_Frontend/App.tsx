@@ -5,11 +5,16 @@ import SplashScreen from "./screens/SplashScreen";
 import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import HomeScreen from "./screens/HomeScreen";
+import StepsScreen from "./screens/StepsScreen";
+import SleepScreen from "./screens/SleepScreen";
+
 export type RootStackParamList = {
   Splash: undefined;
   Login: undefined;
   SignUp: undefined;
   Home: undefined;
+  Steps: undefined;
+  Sleep: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -22,6 +27,8 @@ export default function App() {
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Steps" component={StepsScreen} />
+        <Stack.Screen name="Sleep" component={SleepScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
