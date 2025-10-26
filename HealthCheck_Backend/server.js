@@ -4,6 +4,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./src/config/db.js";
 import userRoutes from "./src/routes/userRoutes.js";
+import healthDataRoutes from "./src/routes/healthDataRoutes.js";
 
 dotenv.config();
 
@@ -38,8 +39,9 @@ app.get("/", (req, res) => {
   res.send("✅ HealthCheck API is running");
 });
 
-// User routes
+// Routes
 app.use("/users", userRoutes);
+app.use("/healthdata", healthDataRoutes);
 
 // Error handler (CORS hoặc khác)
 app.use((err, req, res, next) => {

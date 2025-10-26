@@ -2,19 +2,18 @@
 import { getDB } from "../config/db.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { ObjectId } from "mongodb";
 
-// 🟢 Lấy tất cả user
-export async function getUsers(req, res) {
+
+function toObjectId(id) {
   try {
-    const db = getDB(); // lấy kết nối DB
-    const users = await db.collection("user").find().toArray();
-    res.json(users);
-  } catch (err) {
-    console.error("❌ Error fetching users:", err.message);
-    res.status(500).json({ error: "Internal server error" });
+    // Nếu id là object có $oid
+    if (typeof id === "object" && id.$oid) return new ObjectId(id.$oid);
+    return new ObjectId(id);
+  } catch {
+    return null;
   }
 }
-
 // 🟢 Thêm user mới
 export async function createUser(req, res) {
   try {
@@ -36,21 +35,6 @@ export async function createUser(req, res) {
     res.status(500).json({ error: "Internal server error" });
   }
 }
-
-export async function getUsersTallerThan(req, res) {
-  try {
-    const db = getDB();
-    const users = await db
-      .collection("user")
-      .find({ height_cm: { $gt: 160 } })   // 👉 điều kiện: height_cm > 160
-      .toArray();
-
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-}
-// Sign Up
 // Sign Up
 export async function signUp(req, res) {
   try {
@@ -117,23 +101,74 @@ export async function login(req, res) {
     const { email, password } = req.body;
     const db = getDB();
 
-    // Tìm user theo email
+    // 🔹 Tìm user theo email
     const user = await db.collection("user").findOne({ email });
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // So sánh password
+    // 🔹 Kiểm tra password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // Tạo JWT token
-    const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+    // 🔹 Tạo JWT token
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    // ✅ Kiểm tra hoặc tạo healthdata cho ngày hôm nay
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const existing = await db.collection("healthdata").findOne({
+      userId: new ObjectId(user._id),
+      date: today,
     });
 
+    if (!existing) {
+      await db.collection("healthdata").insertOne({
+        userId: new ObjectId(user._id),
+        date: today,
+        healthScore: 0,
+        steps: {
+          stepCount: 0,
+          distanceKm: 0,
+          durationMin: 0,
+          burnedCalories: 0,
+        },
+        sleep: {
+          totalSleepHr: 0,
+          sleepRate: 0,
+          sleepDuration: 0,
+        },
+        nutrition: {
+          caloriesConsumed: 0,
+          totalFatGrams: 0,
+          totalFatPercent: 0,
+          totalProteinGrams: 0,
+          totalProteinPercent: 0,
+          totalCarbsGrams: 0,
+          totalCarbsPercent: 0,
+        },
+        water: {
+          waterConsumed: 0,
+        },
+        workout: {
+          workDuration: 0,
+          burnedCalories: 0,
+        },
+      });
+
+      console.log(`✅ Created new healthdata for user ${user._id} (${email})`);
+    } else {
+      console.log(`ℹ️ Healthdata already exists for user ${user._id} (${email})`);
+    }
+
+    // ✅ Trả về thông tin user và token
     res.json({
       message: "Login successful",
       user: {
@@ -150,6 +185,38 @@ export async function login(req, res) {
       token,
     });
   } catch (err) {
+    console.error("Login Error:", err);
     res.status(500).json({ error: err.message });
   }
 }
+
+
+export async function updateStepsGoal(req, res) {
+  try {
+    const { userId } = req.params;
+    const { stepsGoal } = req.body;
+    const db = getDB();
+
+    if (!stepsGoal || stepsGoal < 1000)
+      return res.status(400).json({ error: "Invalid goal" });
+
+    const objectId = toObjectId(userId);
+    if (!objectId)
+      return res.status(400).json({ error: "Invalid userId format" });
+
+    const result = await db.collection("user").updateOne(
+      { _id: objectId },
+      { $set: { "health_goal.stepsGoal": stepsGoal } }
+    );
+
+    if (result.modifiedCount === 0)
+      return res.status(404).json({ error: "User not found" });
+
+    res.json({ message: "Steps goal updated successfully", stepsGoal });
+  } catch (err) {
+    console.error("Update Steps Goal Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+
