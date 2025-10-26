@@ -13,6 +13,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../App';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -36,39 +38,45 @@ export default function LoginScreen({ navigation }: Props) {
 
   // ✅ Gọi API login
   async function handleLogin() {
-    setErrorMsg(''); // reset lỗi cũ
-    if (!email || !password) {
-      setErrorMsg('Please enter email and password');
-      return;
-    }
-
-    try {
-      const response = await fetch('https://nhom16-healthycheck.onrender.com/users/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = {};
-      }
-
-      if (response.ok && data.user) {
-        setErrorMsg('');
-        navigation.navigate('Home');
-      } else {
-        console.log('❌ Login failed:', data);
-        setErrorMsg(data.error || 'Invalid email or password'); // 🔹 hiện lỗi
-      }
-    } catch (err) {
-      console.error('⚠️ Fetch error:', err);
-      setErrorMsg('Cannot connect to server');
-    }
+  setErrorMsg('');
+  if (!email || !password) {
+    setErrorMsg('Please enter email and password');
+    return;
   }
+
+  try {
+    const response = await fetch('https://nhom16-healthycheck.onrender.com/users/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = {};
+    }
+
+    if (response.ok && data.user) {
+      setErrorMsg('');
+
+      // ✅ Lưu thông tin user vào AsyncStorage
+      await AsyncStorage.setItem('user', JSON.stringify(data.user));
+
+      console.log('✅ User saved to storage:', data.user);
+
+      navigation.navigate('Home');
+    } else {
+      console.log('❌ Login failed:', data);
+      setErrorMsg(data.error || 'Invalid email or password');
+    }
+  } catch (err) {
+    console.error('⚠️ Fetch error:', err);
+    setErrorMsg('Cannot connect to server');
+  }
+}
 
   return (
     <KeyboardAvoidingView
