@@ -71,12 +71,15 @@ export default function HomeScreen() {
         </LinearGradient>
 
         {/* Overview title (ra ngoài nền xanh) */}
-        <Text style={styles.overviewTitle}>Overview <Ionicons
+        <Text style={styles.overviewTitle}>
+          Overview{" "}
+          <Ionicons
             name="stats-chart-outline"
             size={26}
             color="#2563eb"
             style={{ marginLeft: 8 }}
-          /></Text> 
+          />
+        </Text>
         {/* Health Score */}
         <View style={styles.healthCard}>
           <View>
@@ -101,7 +104,10 @@ export default function HomeScreen() {
             const IconComp = item.icon;
             const isStep = item.label === "Steps";
             const isSleep = item.label === "Sleep";
-
+            const isWorkout = item.label === "Workout";
+            const isWater = item.label === "Water";
+            const isNutrition = item.label === "Nutrition";
+            const isBMI = item.label === "BMI";
             return (
               <TouchableOpacity
                 key={item.label}
@@ -110,6 +116,10 @@ export default function HomeScreen() {
                 onPress={() => {
                   if (isStep) navigation.navigate("Steps"); // 👈 điều hướng sang StepScreen
                   if (isSleep) navigation.navigate("Sleep"); // 👈 điều hướng sang SleepScreen
+                  if (isWorkout) navigation.navigate("Workout"); // 👈 điều hướng sang WorkoutScreen
+                  if (isWater) navigation.navigate("Water"); // 👈 điều hướng sang WaterScreen
+                  if (isNutrition) navigation.navigate("Nutrition");
+                  if (isBMI) navigation.navigate("BMI");
                 }}
               >
                 <IconComp name={item.iconName as any} size={32} color="#fff" />
@@ -171,23 +181,23 @@ const overviewData: OverviewItem[] = [
   {
     label: "Steps",
     value: "—",
-    color: "#93c5fd",
+    color: "#c084fc", // xanh tím (blue-violet)#93c5fd 
     icon: Ionicons,
     iconName: "walk-outline",
   },
   {
-    label: "Cycle Tracking",
-    value: "12 days",
-    color: "#c084fc",
-    icon: Ionicons,
-    iconName: "calendar-outline",
-  },
-  {
     label: "Sleep",
     value: "7h 31min",
-    color: "#38bdf8",
+    color: "#8b5cf6",
     icon: Ionicons,
     iconName: "moon-outline",
+  },
+  {
+    label: "Water",
+    value: "2.0 L", 
+    color: "#38bdf8",
+    icon: Ionicons,
+    iconName: "water-outline",
   },
   {
     label: "Nutrition",
@@ -197,7 +207,7 @@ const overviewData: OverviewItem[] = [
     iconName: "fast-food-outline",
   },
   {
-    label: "Body Mass Index",
+    label: "BMI",
     value: "22.5",
     color: "#facc15",
     icon: Ionicons,
@@ -410,4 +420,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#fff",
   },
+  
 });

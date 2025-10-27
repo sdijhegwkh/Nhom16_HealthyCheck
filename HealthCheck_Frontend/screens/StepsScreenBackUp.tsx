@@ -1,4 +1,4 @@
-// import React, { useState, useEffect, useRef } from 'react';
+// import React, { useState, useEffect, useRef } from "react";
 // import {
 //   View,
 //   Text,
@@ -8,29 +8,49 @@
 //   TextInput,
 //   Animated,
 //   Dimensions,
-// } from 'react-native';
-// import { Ionicons } from '@expo/vector-icons';
-// import { LinearGradient } from 'expo-linear-gradient';
-// import { AnimatedCircularProgress } from 'react-native-circular-progress';
-// import { LineChart } from 'react-native-chart-kit';
-// import { useNavigation } from '@react-navigation/native';
-// import { DeviceMotion } from 'expo-sensors';
+//   KeyboardAvoidingView,
+//   Platform,
+//   Alert,
+// } from "react-native";
+// import { Ionicons } from "@expo/vector-icons";
+// import { LinearGradient } from "expo-linear-gradient";
+// import { BarChart } from "react-native-chart-kit";
+// import { useNavigation } from "@react-navigation/native";
+// import DateTimePicker from "@react-native-community/datetimepicker";
 
-// const screenWidth = Dimensions.get('window').width;
+// const screenWidth = Dimensions.get("window").width;
 
-// export default function StepsScreen() {
+// export default function SleepScreen() {
 //   const navigation = useNavigation();
 //   const fadeAnim = useRef(new Animated.Value(0)).current;
+//   const listAnim = useRef(new Animated.Value(1)).current;
 
-//   // === STATES ===
-//   const [steps, setSteps] = useState(0); // số bước giả lập
-//   const [goal, setGoal] = useState(10000);
+//   const [selectedTab, setSelectedTab] = useState<"today" | "week" | "month">(
+//     "today"
+//   );
+//   const [sleepGoal, setSleepGoal] = useState(8);
 //   const [editingGoal, setEditingGoal] = useState(false);
-//   const [inputGoal, setInputGoal] = useState(goal.toString());
-//   const [selectedTab, setSelectedTab] = useState<'week' | 'month'>('week');
-//   const [shakeCount, setShakeCount] = useState(0); // số lần lắc để tăng bước
+//   const [inputGoal, setInputGoal] = useState(sleepGoal.toString());
 
-//   // === FADE-IN ANIMATION ===
+//   const [sleepSchedules, setSleepSchedules] = useState<
+//     { bedTime: Date; wakeTime: Date; id: number }[]
+//   >([
+//     {
+//       id: 1,
+//       bedTime: new Date(2025, 1, 1, 22, 30),
+//       wakeTime: new Date(2025, 1, 2, 7, 0),
+//     },
+//   ]);
+
+//   const [showPicker, setShowPicker] = useState(false);
+//   const [pickerMode, setPickerMode] = useState<"bed" | "wake" | null>(null);
+//   const [editingId, setEditingId] = useState<number | null>(null);
+
+//   const [sleepDuration, setSleepDuration] = useState("0h 0min");
+//   const [avgSleepWeek, setAvgSleepWeek] = useState("7h 15min");
+//   const [avgSleepMonth, setAvgSleepMonth] = useState("7h 30min");
+
+//   // Fade-in effect
 //   useEffect(() => {
 //     Animated.timing(fadeAnim, {
 //       toValue: 1,
@@ -39,225 +59,453 @@
 //     }).start();
 //   }, []);
 
-//   // === DEVICE MOTION: GIẢ LẬP BƯỚC ===
-//     useEffect(() => {
-//         let lastShake = 0;
-//         const threshold = 1.2; // ngưỡng gia tốc
-//         const subscription = DeviceMotion.addListener((motion) => {
-//         const { acceleration } = motion;
-//         if (!acceleration) return;
+//   // Tính tổng thời gian ngủ
+//   useEffect(() => {
+//     let totalMinutes = 0;
+//     sleepSchedules.forEach((s) => {
+//       const bed = s.bedTime.getHours() * 60 + s.bedTime.getMinutes();
+//       const wake = s.wakeTime.getHours() * 60 + s.wakeTime.getMinutes();
+//       let duration = wake - bed;
+//       if (duration <= 0) duration += 24 * 60;
+//       totalMinutes += duration;
+//     });
+//     const h = Math.floor(totalMinutes / 60);
+//     const m = totalMinutes % 60;
+//     setSleepDuration(`${h}h ${m}min`);
+//   }, [sleepSchedules]);
 
-//         const totalAcceleration = Math.sqrt(
-//             acceleration.x ** 2 + acceleration.y ** 2 + acceleration.z ** 2
-//         );
+//   // Lấy thời gian hiển thị tương ứng tab
+//   const getDisplayDuration = () => {
+//     if (selectedTab === "today") return sleepDuration;
+//     if (selectedTab === "week") return avgSleepWeek;
+//     return avgSleepMonth;
+//   };
 
-//         if (totalAcceleration > threshold) {
-//             const now = Date.now();
-//             if (now - lastShake > 500) { // tránh tính nhiều lần liên tiếp
-//             setShakeCount((prev) => prev + 1);
-//             setSteps((prev) => prev + 1); // mỗi lần lắc = 1 bước
-//             lastShake = now;
-//             }
-//         }
-//         });
-
-//         DeviceMotion.setUpdateInterval(100);
-//         return () => subscription.remove();
-//     }, []);
-
-//   // === TÍNH TOÁN CHO UI ===
-//   const percentage = Math.min((steps / goal) * 100, 100).toFixed(1);
-//   const kcal = Math.round(steps * 0.04);
-//   const distance = (steps * 0.0008).toFixed(2);
-//   const minutes = Math.round(steps / 120);
-
-//   const weeklyData = [4000, 10000, 8000, 12000, 9000, 15000, 11000];
-//   const monthlyData = [8000, 10000, 12000, 15000, 9000, 13000, 17000, 16000, 14000, 12000, 18000, 20000];
+//   // Dữ liệu biểu đồ
+//   const todaySleepHours = 7.5;
+//   const weeklyData = [7, 5.5, 6.8, 7.2, 6, 8, 6.5];
+//   const monthlyData = [7, 7.5, 6, 8, 5, 7, 6.5, 7, 8, 6, 7.5, 7];
 
 //   const chartConfig = {
-//     backgroundColor: '#fff',
-//     backgroundGradientFrom: '#fff',
-//     backgroundGradientTo: '#fff',
-//     decimalPlaces: 0,
+//     backgroundGradientFrom: "#fff",
+//     backgroundGradientTo: "#fff",
+//     decimalPlaces: 1,
 //     color: (opacity = 1) => `rgba(37, 99, 235, ${opacity})`,
-//     labelColor: () => '#111',
-//     propsForDots: {
-//       r: '5',
-//       strokeWidth: '2',
-//       stroke: '#2563eb',
-//       fill: '#93c5fd',
-//     },
-//     propsForBackgroundLines: {
-//       strokeDasharray: '',
-//       stroke: 'rgba(37,99,235,0.2)',
-//     },
+//     labelColor: () => "#333",
+//     propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
+//   };
+
+//   const renderChartData = () => {
+//     if (selectedTab === "today") {
+//       return {
+//         labels: ["Goal 🏆", "Actual"],
+//         datasets: [
+//           {
+//             data: [sleepGoal, todaySleepHours],
+//             colors: [() => "#facc15", () => "#2563eb"],
+//           },
+//         ],
+//       };
+//     } else if (selectedTab === "week") {
+//       const labels = [
+//         "Goal 🏆",
+//         "Mon",
+//         "Tue",
+//         "Wed",
+//         "Thu",
+//         "Fri",
+//         "Sat",
+//         "Sun",
+//       ];
+//       const data = [sleepGoal, ...weeklyData];
+//       const colors = data.map((_, i) =>
+//         i === 0 ? () => "#facc15" : () => "#2563eb"
+//       );
+//       return { labels, datasets: [{ data, colors }] };
+//     } else {
+//       const labels = [
+//         "Goal 🏆",
+//         "1",
+//         "2",
+//         "3",
+//         "4",
+//         "5",
+//         "6",
+//         "7",
+//         "8",
+//         "9",
+//         "10",
+//         "11",
+//         "12",
+//       ];
+//       const data = [sleepGoal, ...monthlyData];
+//       const colors = data.map((_, i) =>
+//         i === 0 ? () => "#facc15" : () => "#2563eb"
+//       );
+//       return { labels, datasets: [{ data, colors }] };
+//     }
+//   };
+
+//   const chartWidth =
+//     selectedTab === "today"
+//       ? screenWidth - 40
+//       : selectedTab === "week"
+//       ? screenWidth * 1.6
+//       : screenWidth * 2.2;
+
+//   // Mở TimePicker
+//   const openPicker = (id: number, mode: "bed" | "wake") => {
+//     setEditingId(id);
+//     setPickerMode(mode);
+//     setShowPicker(true);
+//   };
+
+//   // Chọn giờ
+//   const onChangeTime = (event: any, selectedTime?: Date) => {
+//     if (selectedTime && editingId !== null && pickerMode) {
+//       setShowPicker(false);
+//       setSleepSchedules((prev) =>
+//         prev.map((s) => {
+//           if (s.id === editingId) {
+//             const updated =
+//               pickerMode === "bed"
+//                 ? { ...s, bedTime: selectedTime }
+//                 : { ...s, wakeTime: selectedTime };
+
+//             const bed =
+//               updated.bedTime.getHours() * 60 + updated.bedTime.getMinutes();
+//             const wake =
+//               updated.wakeTime.getHours() * 60 + updated.wakeTime.getMinutes();
+
+//             if (wake <= bed) {
+//               alert("Wake-up time must be after bedtime ⏰");
+//               return s;
+//             }
+//             return updated;
+//           }
+//           return s;
+//         })
+//       );
+//     } else setShowPicker(false);
+//   };
+
+//   // Thêm schedule (chỉ thêm 1 cái mỗi lần)
+//   const addSchedule = () => {
+//     const newId = Date.now();
+//     const newItem = {
+//       id: newId,
+//       bedTime: new Date(),
+//       wakeTime: new Date(new Date().getTime() + 7 * 60 * 60 * 1000),
+//     };
+//     setSleepSchedules((prev) => [...prev, newItem]);
+//     Animated.spring(listAnim, { toValue: 1, useNativeDriver: true }).start();
+//   };
+
+//   // Xóa schedule
+//   const removeSchedule = (id: number) => {
+//     Animated.timing(listAnim, {
+//       toValue: 0.9,
+//       duration: 200,
+//       useNativeDriver: true,
+//     }).start(() => {
+//       setSleepSchedules((prev) => prev.filter((s) => s.id !== id));
+//       listAnim.setValue(1);
+//     });
 //   };
 
 //   return (
-//     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-//       <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
-//         {/* HEADER */}
-//         <LinearGradient
-//           colors={['#2563eb', '#60a5fa']}
-//           style={styles.header}
-//           start={{ x: 0, y: 0 }}
-//           end={{ x: 1, y: 1 }}
-//         >
-//           <View style={styles.headerTop}>
-//             <TouchableOpacity onPress={() => navigation.goBack()}>
-//               <Ionicons name="chevron-back-outline" size={26} color="#fff" />
-//             </TouchableOpacity>
-//             <Text style={styles.headerTitle}>Steps</Text>
-//             <View style={{ width: 26 }} />
-//           </View>
-//         </LinearGradient>
-
-//         {/* PROGRESS TEXT */}
-//         <Text style={styles.progressText}>
-//           You’ve completed <Text style={{ color: '#2563eb', fontWeight: '700' }}>{percentage}%</Text> of your goal today
-//         </Text>
-
-//         {/* CIRCULAR PROGRESS */}
-//         <View style={styles.progressContainer}>
-//           <AnimatedCircularProgress
-//             size={220}
-//             width={14}
-//             fill={(steps / goal) * 100}
-//             tintColor="#2563eb"
-//             backgroundColor="#e5e7eb"
-//             rotation={0}
-//             lineCap="round"
-//           >
-//             {() => (
-//               <View style={{ alignItems: 'center' }}>
-//                 <Ionicons name="walk-outline" size={36} color="#2563eb" style={{ marginBottom: 4 }} />
-//                 <Text style={styles.stepsValue}>{steps.toLocaleString()}</Text>
-//                 <Text style={styles.stepsGoal}>/ {goal.toLocaleString()} steps</Text>
-//               </View>
-//             )}
-//           </AnimatedCircularProgress>
-
-//           {/* EDIT GOAL */}
-//           <TouchableOpacity style={styles.editGoalBtn} onPress={() => setEditingGoal(!editingGoal)}>
-//             <Ionicons name="create-outline" size={20} color="#2563eb" />
-//             <Text style={{ color: '#2563eb', marginLeft: 4 }}>Edit Goal</Text>
-//           </TouchableOpacity>
-
-//           {editingGoal && (
-//             <View style={styles.goalInputContainer}>
-//               <TextInput
-//                 value={inputGoal}
-//                 onChangeText={setInputGoal}
-//                 keyboardType="numeric"
-//                 style={styles.goalInput}
-//               />
-//               <TouchableOpacity
-//                 style={styles.saveGoalBtn}
-//                 onPress={() => {
-//                   setGoal(Number(inputGoal));
-//                   setEditingGoal(false);
-//                 }}
-//               >
-//                 <Text style={{ color: '#fff', fontWeight: '600' }}>Save</Text>
+//     <KeyboardAvoidingView
+//       style={{ flex: 1 }}
+//       behavior={Platform.OS === "ios" ? "padding" : "height"}
+//     >
+//       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+//         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+//           {/* Header */}
+//           <LinearGradient colors={["#2563eb", "#60a5fa"]} style={styles.header}>
+//             <View style={styles.headerTop}>
+//               <TouchableOpacity onPress={() => navigation.goBack()}>
+//                 <Ionicons name="chevron-back-outline" size={26} color="#fff" />
 //               </TouchableOpacity>
+//               <Text style={styles.headerTitle}>Sleep</Text>
+//               <View style={{ width: 26 }} />
 //             </View>
-//           )}
-//         </View>
+//           </LinearGradient>
 
-//         {/* STAT CARDS */}
-//         <View style={styles.statsRow}>
-//           <View style={styles.statCard}>
-//             <Ionicons name="flame-outline" size={26} color="#ef4444" />
-//             <Text style={styles.statValue}>{kcal} kcal</Text>
-//           </View>
-//           <View style={styles.statCard}>
-//             <Ionicons name="location-outline" size={26} color="#10b981" />
-//             <Text style={styles.statValue}>{distance} km</Text>
-//           </View>
-//           <View style={styles.statCard}>
-//             <Ionicons name="time-outline" size={26} color="#f59e0b" />
-//             <Text style={styles.statValue}>{minutes} min</Text>
-//           </View>
-//         </View>
+//           {/* Sleep Duration Text */}
+//           <Text style={styles.avgSleepText}>
+//             {selectedTab === "today" ? (
+//               <>
+//                 <Text style={{ fontWeight: "700" }}>
+//                   Your time of sleep{"\n"}today is{" "}
+//                 </Text>
+//                 <Text style={{ color: "#2563eb", fontWeight: "700" }}>
+//                   {getDisplayDuration()}
+//                 </Text>
+//               </>
+//             ) : selectedTab === "week" ? (
+//               <>
+//                 <Text style={{ fontWeight: "700" }}>
+//                   Your average time of sleep{"\n"}this week is{" "}
+//                 </Text>
+//                 <Text style={{ color: "#2563eb", fontWeight: "700" }}>
+//                   {getDisplayDuration()}
+//                 </Text>
+//               </>
+//             ) : (
+//               <>
+//                 <Text style={{ fontWeight: "700" }}>
+//                   Your average time of sleep{"\n"}this month is{" "}
+//                 </Text>
+//                 <Text style={{ color: "#2563eb", fontWeight: "700" }}>
+//                   {getDisplayDuration()}
+//                 </Text>
+//               </>
+//             )}
+//           </Text>
 
-//         {/* TABS */}
-//         <View style={styles.tabsContainer}>
-//           <TouchableOpacity
-//             style={[styles.tab, selectedTab === 'week' && styles.activeTab]}
-//             onPress={() => setSelectedTab('week')}
-//           >
-//             <Text style={[styles.tabText, selectedTab === 'week' && styles.activeTabText]}>Weekly</Text>
-//           </TouchableOpacity>
-//           <TouchableOpacity
-//             style={[styles.tab, selectedTab === 'month' && styles.activeTab]}
-//             onPress={() => setSelectedTab('month')}
-//           >
-//             <Text style={[styles.tabText, selectedTab === 'month' && styles.activeTabText]}>Monthly</Text>
-//           </TouchableOpacity>
-//         </View>
+//           {/* Tabs */}
+//           <View style={styles.tabsContainer}>
+//             {["today", "week", "month"].map((tab) => (
+//               <TouchableOpacity
+//                 key={tab}
+//                 style={[styles.tab, selectedTab === tab && styles.activeTab]}
+//                 onPress={() => setSelectedTab(tab as any)}
+//               >
+//                 <Text
+//                   style={[
+//                     styles.tabText,
+//                     selectedTab === tab && styles.activeTabText,
+//                   ]}
+//                 >
+//                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
+//                 </Text>
+//               </TouchableOpacity>
+//             ))}
+//           </View>
 
-//         {/* CHART */}
-//         <View style={styles.chartContainer}>
-//           {selectedTab === 'week' ? (
-//             <>
-//               <Text style={styles.chartTitle}>Weekly Activity</Text>
-//               <LineChart
-//                 data={{
-//                   labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-//                   datasets: [{ data: weeklyData }],
-//                 }}
-//                 width={screenWidth - 40}
+//           {/* Chart */}
+//           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+//             <View style={styles.chartContainer}>
+//               <BarChart
+//                 data={renderChartData()}
+//                 width={chartWidth}
 //                 height={220}
+//                 fromZero
+//                 yAxisSuffix="h"
 //                 chartConfig={chartConfig}
-//                 bezier
 //                 style={styles.chart}
+//                 withCustomBarColorFromData
+//                 flatColor
+//                 showValuesOnTopOfBars
 //               />
-//             </>
-//           ) : (
-//             <>
-//               <Text style={styles.chartTitle}>Monthly Statistics</Text>
-//               <LineChart
-//                 data={{
-//                   labels: ['1','2','3','4','5','6','7','8','9','10','11','12'],
-//                   datasets: [{ data: monthlyData }],
-//                 }}
-//                 width={screenWidth - 40}
-//                 height={220}
-//                 chartConfig={chartConfig}
-//                 bezier
-//                 style={styles.chart}
+//             </View>
+//           </ScrollView>
+
+//           <Text style={styles.sleepRateText}>
+//             {selectedTab === "today"
+//               ? "Sleep rate today: 94% 😴"
+//               : selectedTab === "week"
+//               ? "Sleep rate this week: 88% 🌙"
+//               : "Sleep rate this month: 92% 💤"}
+//           </Text>
+
+//           {/* Sleep Goal */}
+//           <LinearGradient
+//             colors={["#dbeafe", "#93c5fd"]}
+//             style={styles.goalCard}
+//           >
+//             <View style={{ flexDirection: "row", alignItems: "center" }}>
+//               <Ionicons
+//                 name="moon-outline"
+//                 size={20}
+//                 color="#2563eb"
+//                 style={{ marginRight: 6 }}
 //               />
-//             </>
+//               <Text style={{ fontWeight: "700", color: "#1e3a8a" }}>
+//                 Sleep Goal (hours)
+//               </Text>
+//             </View>
+
+//             {editingGoal ? (
+//               <View style={{ flexDirection: "row", alignItems: "center" }}>
+//                 <TextInput
+//                   value={inputGoal}
+//                   onChangeText={setInputGoal}
+//                   keyboardType="numeric"
+//                   style={styles.goalInput}
+//                 />
+//                 <TouchableOpacity
+//                   style={styles.saveGoalBtn}
+//                   onPress={() => {
+//                     setSleepGoal(Number(inputGoal));
+//                     setEditingGoal(false);
+//                   }}
+//                 >
+//                   <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
+//                 </TouchableOpacity>
+//               </View>
+//             ) : (
+//               <TouchableOpacity onPress={() => setEditingGoal(true)}>
+//                 <Text style={styles.goalText}>{sleepGoal} h</Text>
+//               </TouchableOpacity>
+//             )}
+//           </LinearGradient>
+
+//           {/* Schedule */}
+//           <LinearGradient
+//             colors={["#fef9c3", "#fde68a"]}
+//             style={styles.scheduleCard}
+//           >
+//             <View style={{ flexDirection: "row", alignItems: "center" }}>
+//               <Ionicons
+//                 name="calendar-outline"
+//                 size={20}
+//                 color="#92400e"
+//                 style={{ marginRight: 6 }}
+//               />
+//               <Text
+//                 style={{ fontWeight: "700", fontSize: 16, color: "#78350f" }}
+//               >
+//                 Set Your Schedule
+//               </Text>
+//             </View>
+
+//             {sleepSchedules.map((s) => (
+//               <Animated.View
+//                 key={s.id}
+//                 style={{ transform: [{ scale: listAnim }] }}
+//               >
+//                 <View style={styles.scheduleRow}>
+//                   <View style={{ alignItems: "center" }}>
+//                     <Ionicons name="moon" size={18} color="#92400e" />
+//                     <TouchableOpacity onPress={() => openPicker(s.id, "bed")}>
+//                       <Text style={styles.timeText}>
+//                         {s.bedTime.getHours().toString().padStart(2, "0")}:
+//                         {s.bedTime.getMinutes().toString().padStart(2, "0")}
+//                       </Text>
+//                     </TouchableOpacity>
+//                   </View>
+
+//                   <Ionicons name="arrow-forward" size={20} color="#78350f" />
+
+//                   <View style={{ alignItems: "center" }}>
+//                     <Ionicons name="sunny" size={18} color="#f59e0b" />
+//                     <TouchableOpacity onPress={() => openPicker(s.id, "wake")}>
+//                       <Text style={styles.timeText}>
+//                         {s.wakeTime.getHours().toString().padStart(2, "0")}:
+//                         {s.wakeTime.getMinutes().toString().padStart(2, "0")}
+//                       </Text>
+//                     </TouchableOpacity>
+//                   </View>
+
+//                   <TouchableOpacity onPress={() => removeSchedule(s.id)}>
+//                     <Ionicons name="trash" size={20} color="#b91c1c" />
+//                   </TouchableOpacity>
+//                 </View>
+//               </Animated.View>
+//             ))}
+
+//             <TouchableOpacity style={styles.addBtn} onPress={addSchedule}>
+//               <Ionicons name="add-circle" size={22} color="#92400e" />
+//               <Text style={{ color: "#78350f", fontWeight: "700" }}>
+//                 Add Schedule
+//               </Text>
+//             </TouchableOpacity>
+//           </LinearGradient>
+
+//           {showPicker && (
+//             <DateTimePicker
+//               value={new Date()}
+//               mode="time"
+//               is24Hour
+//               display="spinner"
+//               onChange={onChangeTime}
+//             />
 //           )}
-//         </View>
-//       </ScrollView>
-//     </Animated.View>
+//         </ScrollView>
+//       </Animated.View>
+//     </KeyboardAvoidingView>
 //   );
 // }
 
-// // === STYLES ===
 // const styles = StyleSheet.create({
-//   container: { flex: 1, backgroundColor: '#fff' },
-//   header: { paddingTop: 60, paddingBottom: 30, paddingHorizontal: 20, borderBottomLeftRadius: 25, borderBottomRightRadius: 25 },
-//   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-//   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
-//   progressText: { fontSize: 18, fontWeight: '700', color: '#111', textAlign: 'center', marginTop: 20 },
-//   progressContainer: { alignItems: 'center', marginTop: 25 },
-//   stepsValue: { fontSize: 34, fontWeight: '700', color: '#111' },
-//   stepsGoal: { color: '#6b7280', marginTop: 4 },
-//   editGoalBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
-//   goalInputContainer: { flexDirection: 'row', marginTop: 10, alignItems: 'center' },
-//   goalInput: { borderWidth: 1, borderColor: '#ccc', padding: 6, borderRadius: 6, width: 100, textAlign: 'center' },
-//   saveGoalBtn: { backgroundColor: '#2563eb', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6, marginLeft: 8 },
-//   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 30 },
-//   statCard: { alignItems: 'center' },
-//   statValue: { fontSize: 16, fontWeight: '600', marginTop: 4 },
-//   tabsContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 40, backgroundColor: '#f1f5f9', borderRadius: 25, marginHorizontal: 40 },
-//   tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 25 },
-//   activeTab: { backgroundColor: '#2563eb' },
-//   tabText: { color: '#2563eb', fontWeight: '600' },
-//   activeTabText: { color: '#fff' },
-//   chartContainer: { marginTop: 25, alignItems: 'center' },
-//   chartTitle: { fontSize: 16, fontWeight: '700', color: '#111', marginBottom: 8 },
+//   container: { flex: 1, backgroundColor: "#fff" },
+//   header: {
+//     paddingTop: 60,
+//     paddingBottom: 30,
+//     paddingHorizontal: 20,
+//     borderBottomLeftRadius: 25,
+//     borderBottomRightRadius: 25,
+//   },
+//   headerTop: {
+//     flexDirection: "row",
+//     justifyContent: "space-between",
+//     alignItems: "center",
+//   },
+//   headerTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
+//   avgSleepText: { fontSize: 18, textAlign: "center", marginVertical: 10 },
+//   tabsContainer: {
+//     flexDirection: "row",
+//     justifyContent: "center",
+//     marginHorizontal: 40,
+//     borderRadius: 25,
+//     backgroundColor: "#f1f5f9",
+//   },
+//   tab: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 25 },
+//   activeTab: { backgroundColor: "#2563eb" },
+//   tabText: { color: "#2563eb", fontWeight: "600" },
+//   activeTabText: { color: "#fff" },
+//   chartContainer: { marginTop: 20, alignItems: "center" },
 //   chart: { borderRadius: 16 },
+//   scheduleCard: {
+//     marginTop: 20,
+//     marginHorizontal: 20,
+//     borderRadius: 12,
+//     padding: 16,
+//   },
+//   scheduleRow: {
+//     flexDirection: "row",
+//     justifyContent: "space-between",
+//     alignItems: "center",
+//     marginVertical: 10,
+//   },
+//   timeText: { fontWeight: "700", color: "#1e3a8a", fontSize: 16, marginTop: 4 },
+//   addBtn: {
+//     flexDirection: "row",
+//     alignItems: "center",
+//     justifyContent: "center",
+//     marginTop: 10,
+//     gap: 6,
+//   },
+//   goalCard: {
+//     marginTop: 25,
+//     marginHorizontal: 20,
+//     borderRadius: 12,
+//     padding: 16,
+//   },
+//   goalInput: {
+//     borderWidth: 1,
+//     borderColor: "#2563eb",
+//     borderRadius: 6,
+//     paddingHorizontal: 10,
+//     width: 80,
+//     marginRight: 8,
+//     backgroundColor: "#fff",
+//   },
+//   saveGoalBtn: {
+//     backgroundColor: "#2563eb",
+//     paddingHorizontal: 12,
+//     paddingVertical: 6,
+//     borderRadius: 6,
+//     marginTop: 10,
+//     alignSelf: "center",
+//   },
+//   goalText: { color: "#2563eb", fontWeight: "700", fontSize: 16, marginTop: 4 },
+//   sleepRateText: {
+//     marginTop: 10,
+//     fontWeight: "700",
+//     color: "#1e3a8a",
+//     fontSize: 16,
+//     textAlign: "center",
+//   },
 // });

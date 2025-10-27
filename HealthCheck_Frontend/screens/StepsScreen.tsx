@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
   progressText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     color: "#111",
     textAlign: "center",

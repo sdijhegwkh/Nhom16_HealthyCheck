@@ -90,7 +90,7 @@ export default function SleepScreen() {
     backgroundGradientFrom: "#fff",
     backgroundGradientTo: "#fff",
     decimalPlaces: 1,
-    color: (opacity = 1) => `rgba(37, 99, 235, ${opacity})`,
+    color: (opacity = 1) => `rgba(124, 58, 237, ${opacity})`,
     labelColor: () => "#333",
     propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
   };
@@ -102,7 +102,7 @@ export default function SleepScreen() {
         datasets: [
           {
             data: [sleepGoal, todaySleepHours],
-            colors: [() => "#facc15", () => "#2563eb"],
+            colors: [() => "#facc15", () => "#7c3aed"],
           },
         ],
       };
@@ -119,7 +119,7 @@ export default function SleepScreen() {
       ];
       const data = [sleepGoal, ...weeklyData];
       const colors = data.map((_, i) =>
-        i === 0 ? () => "#facc15" : () => "#2563eb"
+        i === 0 ? () => "#facc15" : () => "#7c3aed"
       );
       return { labels, datasets: [{ data, colors }] };
     } else {
@@ -140,7 +140,7 @@ export default function SleepScreen() {
       ];
       const data = [sleepGoal, ...monthlyData];
       const colors = data.map((_, i) =>
-        i === 0 ? () => "#facc15" : () => "#2563eb"
+        i === 0 ? () => "#facc15" : () => "#7c3aed"
       );
       return { labels, datasets: [{ data, colors }] };
     }
@@ -162,34 +162,38 @@ export default function SleepScreen() {
 
   // Chọn giờ
   const onChangeTime = (event: any, selectedTime?: Date) => {
-    if (selectedTime && editingId !== null && pickerMode) {
-      setShowPicker(false);
-      setSleepSchedules((prev) =>
-        prev.map((s) => {
-          if (s.id === editingId) {
-            const updated =
-              pickerMode === "bed"
-                ? { ...s, bedTime: selectedTime }
-                : { ...s, wakeTime: selectedTime };
+  if (selectedTime && editingId !== null && pickerMode) {
+    setShowPicker(false);
+    setSleepSchedules((prev) =>
+      prev.map((s) => {
+        if (s.id === editingId) {
+          const updated =
+            pickerMode === "bed"
+              ? { ...s, bedTime: selectedTime }
+              : { ...s, wakeTime: selectedTime };
 
-            const bed =
-              updated.bedTime.getHours() * 60 + updated.bedTime.getMinutes();
-            const wake =
-              updated.wakeTime.getHours() * 60 + updated.wakeTime.getMinutes();
+          const bed =
+            updated.bedTime.getHours() * 60 + updated.bedTime.getMinutes();
+          const wake =
+            updated.wakeTime.getHours() * 60 + updated.wakeTime.getMinutes();
 
-            if (wake <= bed) {
-               alert("Wake-up time must be after bedtime ⏰");
-              return s;
-            }
-            return updated;
+          // ✅ Nếu wake < bed => coi như wake là ngày hôm sau
+          const duration = wake >= bed ? wake - bed : wake + 24 * 60 - bed;
+
+          if (duration <= 0) {
+            alert("Wake-up time must be after bedtime ⏰");
+            return s;
           }
-          return s;
-        })
-      );
-    } else setShowPicker(false);
-  };
 
-  // Thêm schedule (chỉ thêm 1 cái mỗi lần)
+          return updated;
+        }
+        return s;
+      })
+    );
+  } else setShowPicker(false);
+};
+
+  // Thêm schedule
   const addSchedule = () => {
     const newId = Date.now();
     const newItem = {
@@ -221,7 +225,7 @@ export default function SleepScreen() {
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
           {/* Header */}
-          <LinearGradient colors={["#2563eb", "#60a5fa"]} style={styles.header}>
+          <LinearGradient colors={["#6366f1", "#a855f7"]} style={styles.header}>
             <View style={styles.headerTop}>
               <TouchableOpacity onPress={() => navigation.goBack()}>
                 <Ionicons name="chevron-back-outline" size={26} color="#fff" />
@@ -231,36 +235,18 @@ export default function SleepScreen() {
             </View>
           </LinearGradient>
 
-          {/* Sleep Duration Text */}
+          {/* Sleep Duration */}
           <Text style={styles.avgSleepText}>
-            {selectedTab === "today" ? (
-              <>
-                <Text style={{ fontWeight: "700" }}>
-                  Your time of sleep{"\n"}today is{" "}
-                </Text>
-                <Text style={{ color: "#2563eb", fontWeight: "700" }}>
-                  {getDisplayDuration()}
-                </Text>
-              </>
-            ) : selectedTab === "week" ? (
-              <>
-                <Text style={{ fontWeight: "700" }}>
-                  Your average time of sleep{"\n"}this week is{" "}
-                </Text>
-                <Text style={{ color: "#2563eb", fontWeight: "700" }}>
-                  {getDisplayDuration()}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={{ fontWeight: "700" }}>
-                  Your average time of sleep{"\n"}this month is{" "}
-                </Text>
-                <Text style={{ color: "#2563eb", fontWeight: "700" }}>
-                  {getDisplayDuration()}
-                </Text>
-              </>
-            )}
+            <Text style={{ fontWeight: "700" }}>
+              {selectedTab === "today"
+                ? "Your time of sleep \n today is "
+                : selectedTab === "week"
+                ? "Your average time of sleep \n this week is "
+                : "Your average time of sleep \n this month is "}
+            </Text>
+            <Text style={{ fontWeight: "800", color: "#7c3aed" }}>
+              {getDisplayDuration()}
+            </Text>
           </Text>
 
           {/* Tabs */}
@@ -309,19 +295,19 @@ export default function SleepScreen() {
               : "Sleep rate this month: 92% 💤"}
           </Text>
 
-          {/* Sleep Goal */}
+          {/* Goal Card */}
           <LinearGradient
-            colors={["#dbeafe", "#93c5fd"]}
+            colors={["#fef9c3", "#fde68a"]}
             style={styles.goalCard}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons
-                name="moon-outline"
+                name="trophy-outline"
                 size={20}
-                color="#2563eb"
+                color="#92400e"
                 style={{ marginRight: 6 }}
               />
-              <Text style={{ fontWeight: "700", color: "#1e3a8a" }}>
+              <Text style={{fontSize: 16, fontWeight: "700", color: "#78350f" }}>
                 Sleep Goal (hours)
               </Text>
             </View>
@@ -332,10 +318,10 @@ export default function SleepScreen() {
                   value={inputGoal}
                   onChangeText={setInputGoal}
                   keyboardType="numeric"
-                  style={styles.goalInput}
+                  style={[styles.goalInput, { borderColor: "#92400e" }]}
                 />
                 <TouchableOpacity
-                  style={styles.saveGoalBtn}
+                  style={[styles.saveGoalBtn, { backgroundColor: "#92400e" }]}
                   onPress={() => {
                     setSleepGoal(Number(inputGoal));
                     setEditingGoal(false);
@@ -346,25 +332,27 @@ export default function SleepScreen() {
               </View>
             ) : (
               <TouchableOpacity onPress={() => setEditingGoal(true)}>
-                <Text style={styles.goalText}>{sleepGoal} h</Text>
+                <Text style={[styles.goalText, { color: "#78350f" }]}>
+                  {sleepGoal} h
+                </Text>
               </TouchableOpacity>
             )}
           </LinearGradient>
 
           {/* Schedule */}
           <LinearGradient
-            colors={["#fef9c3", "#fde68a"]}
+            colors={["#f3e8ff", "#e9d5ff"]}
             style={styles.scheduleCard}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons
                 name="calendar-outline"
                 size={20}
-                color="#92400e"
+                color="#6d28d9"
                 style={{ marginRight: 6 }}
               />
               <Text
-                style={{ fontWeight: "700", fontSize: 16, color: "#78350f" }}
+                style={{ fontWeight: "700", fontSize: 16, color: "#5b21b6" }}
               >
                 Set Your Schedule
               </Text>
@@ -377,7 +365,7 @@ export default function SleepScreen() {
               >
                 <View style={styles.scheduleRow}>
                   <View style={{ alignItems: "center" }}>
-                    <Ionicons name="moon" size={18} color="#92400e" />
+                    <Ionicons name="moon" size={18} color="#6d28d9" />
                     <TouchableOpacity onPress={() => openPicker(s.id, "bed")}>
                       <Text style={styles.timeText}>
                         {s.bedTime.getHours().toString().padStart(2, "0")}:
@@ -386,10 +374,10 @@ export default function SleepScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  <Ionicons name="arrow-forward" size={20} color="#78350f" />
+                  <Ionicons name="arrow-forward" size={20} color="#5b21b6" />
 
                   <View style={{ alignItems: "center" }}>
-                    <Ionicons name="sunny" size={18} color="#f59e0b" />
+                    <Ionicons name="sunny" size={18} color="#a855f7" />
                     <TouchableOpacity onPress={() => openPicker(s.id, "wake")}>
                       <Text style={styles.timeText}>
                         {s.wakeTime.getHours().toString().padStart(2, "0")}:
@@ -406,8 +394,8 @@ export default function SleepScreen() {
             ))}
 
             <TouchableOpacity style={styles.addBtn} onPress={addSchedule}>
-              <Ionicons name="add-circle" size={22} color="#92400e" />
-              <Text style={{ color: "#78350f", fontWeight: "700" }}>
+              <Ionicons name="add-circle" size={22} color="#6d28d9" />
+              <Text style={{ color: "#5b21b6", fontWeight: "700" }}>
                 Add Schedule
               </Text>
             </TouchableOpacity>
@@ -430,14 +418,25 @@ export default function SleepScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { paddingTop: 60, paddingBottom: 30, paddingHorizontal: 20 },
+  header: {
+    paddingTop: 60,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+  },
   headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   headerTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
-  avgSleepText: { fontSize: 18, textAlign: "center", marginVertical: 10 },
+  avgSleepText: {
+    fontSize: 20,
+    textAlign: "center",
+    marginVertical: 10,
+    lineHeight: 26,
+  },
   tabsContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -446,8 +445,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#f1f5f9",
   },
   tab: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 25 },
-  activeTab: { backgroundColor: "#2563eb" },
-  tabText: { color: "#2563eb", fontWeight: "600" },
+  activeTab: { backgroundColor: "#7c3aed" },
+  tabText: { color: "#7c3aed", fontWeight: "600" },
   activeTabText: { color: "#fff" },
   chartContainer: { marginTop: 20, alignItems: "center" },
   chart: { borderRadius: 16 },
@@ -463,7 +462,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginVertical: 10,
   },
-  timeText: { fontWeight: "700", color: "#1e3a8a", fontSize: 16, marginTop: 4 },
+  timeText: { fontWeight: "700", color: "#4c1d95", fontSize: 16, marginTop: 4 },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -471,10 +470,15 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 6,
   },
-  goalCard: { marginTop: 25, marginHorizontal: 20, borderRadius: 12, padding: 16 },
+  goalCard: {
+    marginTop: 25,
+    marginHorizontal: 20,
+    borderRadius: 12,
+    padding: 16,
+  },
   goalInput: {
     borderWidth: 1,
-    borderColor: "#2563eb",
+    borderColor: "#7c3aed",
     borderRadius: 6,
     paddingHorizontal: 10,
     width: 80,
@@ -482,18 +486,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   saveGoalBtn: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#7c3aed",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
     marginTop: 10,
     alignSelf: "center",
   },
-  goalText: { color: "#2563eb", fontWeight: "700", fontSize: 16, marginTop: 4 },
-   sleepRateText: {
+  goalText: {
+    color: "#78350f",
+    fontWeight: "700",
+    fontSize: 16,
+    marginTop: 4,
+    marginLeft: 5,
+  },
+  sleepRateText: {
     marginTop: 10,
     fontWeight: "700",
-    color: "#1e3a8a",
+    color: "#4c1d95",
     fontSize: 16,
     textAlign: "center",
   },
