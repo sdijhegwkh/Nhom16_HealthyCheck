@@ -7,6 +7,10 @@ import SignUpScreen from "./screens/SignUpScreen";
 import HomeScreen from "./screens/HomeScreen";
 import StepsScreen from "./screens/StepsScreen";
 import SleepScreen from "./screens/SleepScreen";
+import WorkoutScreen from "./screens/WorkOutScreen";
+import WaterScreen from "./screens/WaterScreen";
+import NutritionScreen from "./screens/NutritionScreen";
+import BMIScreen from "./screens/BMIScreen";
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -15,6 +19,10 @@ export type RootStackParamList = {
   Home: undefined;
   Steps: undefined;
   Sleep: undefined;
+  Workout: undefined;
+  Water: undefined;
+  Nutrition: undefined;
+  BMI: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -29,6 +37,10 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Steps" component={StepsScreen} />
         <Stack.Screen name="Sleep" component={SleepScreen} />
+        <Stack.Screen name="Workout" component={WorkoutScreen} />
+        <Stack.Screen name="Water" component={WaterScreen} />
+        <Stack.Screen name="Nutrition" component={NutritionScreen} />
+        <Stack.Screen name="BMI" component={BMIScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
