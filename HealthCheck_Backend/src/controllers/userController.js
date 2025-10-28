@@ -58,6 +58,7 @@ export async function signUp(req, res) {
         caloriesGoal: 2500,
         workoutGoal: 120,
         waterGoal: 2000,
+        sleepGoal:460,
       };
     } else {
       // Mặc định là nữ nếu không phải male
@@ -66,6 +67,7 @@ export async function signUp(req, res) {
         caloriesGoal: 2000,
         workoutGoal: 120,
         waterGoal: 2000,
+        sleepGoal:460,
       };
     }
 
@@ -107,32 +109,38 @@ export async function login(req, res) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // 🔹 Kiểm tra password
+    // 🔹 Kiểm tra mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // 🔹 Tạo JWT token
+    // 🔹 Tạo JWT token (hết hạn sau 1h)
     const token = jwt.sign(
       { id: user._id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    // ✅ Kiểm tra hoặc tạo healthdata cho ngày hôm nay
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // ✅ Tính ngày hôm nay theo múi giờ Việt Nam (UTC+7)
+    const now = new Date();
+    const vietnamOffset = 7 * 60 * 60 * 1000; // 7 tiếng
+    const vietnamDate = new Date(now.getTime() + vietnamOffset);
+    vietnamDate.setHours(0, 0, 0, 0);
+    console.log("Now:", now.toISOString());
+console.log("VietnamDate:", vietnamDate.toISOString());
 
+    // 🔹 Kiểm tra xem healthdata hôm nay đã tồn tại chưa
     const existing = await db.collection("healthdata").findOne({
       userId: new ObjectId(user._id),
-      date: today,
+      date: vietnamDate,
     });
 
+    // 🔹 Nếu chưa có thì tạo mới healthdata mặc định
     if (!existing) {
       await db.collection("healthdata").insertOne({
         userId: new ObjectId(user._id),
-        date: today,
+        date: vietnamDate,
         healthScore: 0,
         steps: {
           stepCount: 0,
@@ -142,8 +150,7 @@ export async function login(req, res) {
         },
         sleep: {
           totalSleepHr: 0,
-          sleepRate: 0,
-          sleepDuration: 0,
+          sessions: [],
         },
         nutrition: {
           caloriesConsumed: 0,
@@ -159,13 +166,17 @@ export async function login(req, res) {
         },
         workout: {
           workDuration: 0,
-          burnedCalories: 0,
+          sessions: [],
         },
       });
 
-      console.log(`✅ Created new healthdata for user ${user._id} (${email})`);
+      console.log(
+        `✅ Created new healthdata for user ${user._id} (${email}) - Date: ${vietnamDate.toISOString()}`
+      );
     } else {
-      console.log(`ℹ️ Healthdata already exists for user ${user._id} (${email})`);
+      console.log(
+        `ℹ️ Healthdata already exists for user ${user._id} (${email}) - Date: ${vietnamDate.toISOString()}`
+      );
     }
 
     // ✅ Trả về thông tin user và token
@@ -189,6 +200,7 @@ export async function login(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
+
 
 
 export async function updateStepsGoal(req, res) {
@@ -216,6 +228,58 @@ export async function updateStepsGoal(req, res) {
   } catch (err) {
     console.error("Update Steps Goal Error:", err);
     res.status(500).json({ error: err.message });
+  }
+}
+// 🟢 Cập nhật Sleep Goal (phút)
+export async function updateSleepGoal(req, res) {
+  try {
+    const { userId } = req.params;
+    const { sleepGoal } = req.body; // đơn vị: phút
+    const db = getDB();
+
+    // Kiểm tra hợp lệ
+    if (!sleepGoal || sleepGoal < 60)
+      return res.status(400).json({ error: "Invalid sleep goal" });
+
+    const objectId = toObjectId(userId);
+    if (!objectId)
+      return res.status(400).json({ error: "Invalid userId format" });
+
+    const result = await db.collection("user").updateOne(
+      { _id: objectId },
+      { $set: { "health_goal.sleepGoal": sleepGoal } }
+    );
+
+    if (result.modifiedCount === 0)
+      return res.status(404).json({ error: "User not found" });
+
+    res.json({ message: "Sleep goal updated successfully", sleepGoal });
+  } catch (err) {
+    console.error("Update Sleep Goal Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+}
+// 🟢 Lấy thông tin user theo ID
+export async function getUserById(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getDB();
+
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return res.status(400).json({ error: "Invalid user ID format" });
+    }
+
+    const user = await db.collection("user").findOne({ _id: objectId });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error("❌ Get User By ID Error:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 }
 
