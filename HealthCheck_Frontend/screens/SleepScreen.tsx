@@ -17,7 +17,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BarChart } from "react-native-chart-kit";
 import { useNavigation } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 const screenWidth = Dimensions.get("window").width;
 
 export default function SleepScreen() {
@@ -30,27 +33,37 @@ export default function SleepScreen() {
   );
   const [sleepGoal, setSleepGoal] = useState(8);
   const [editingGoal, setEditingGoal] = useState(false);
-  const [inputGoal, setInputGoal] = useState(sleepGoal.toString());
-
+  const [inputGoal, setInputGoal] = useState("8");
+  const [userId, setUserId] = useState<string | null>(null);
   const [sleepSchedules, setSleepSchedules] = useState<
-    { bedTime: Date; wakeTime: Date; id: number }[]
-  >([
-    {
-      id: 1,
-      bedTime: new Date(2025, 1, 1, 22, 30),
-      wakeTime: new Date(2025, 1, 2, 7, 0),
-    },
-  ]);
-
+    { id: number; bedTime: Date; wakeTime: Date; isLocked: boolean }[]
+  >([]);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<"bed" | "wake" | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-
   const [sleepDuration, setSleepDuration] = useState("0h 0min");
-  const [avgSleepWeek, setAvgSleepWeek] = useState("7h 15min");
-  const [avgSleepMonth, setAvgSleepMonth] = useState("7h 30min");
+  const [avgSleepWeek, setAvgSleepWeek] = useState("0h 0min");
+  const [avgSleepMonth, setAvgSleepMonth] = useState("0h 0min");
+  const [weekData, setWeekData] = useState<number[]>([]);
+  const [monthData, setMonthData] = useState<number[]>([]);
+  const [loadingChart, setLoadingChart] = useState(false);
+  const [weekLabels, setWeekLabels] = useState<string[]>([]);
+  // === Chuyển Date → "2025-10-28 21:20" (giờ VN) ===
+const formatVNTime = (date: Date): string => {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
-  // Fade-in effect
+// === Chuyển "2025-10-28 21:20" → Date (giờ VN) ===
+const parseVNTime = (str: string): Date => {
+  const [datePart, timePart] = str.split(" ");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  return new Date(year, month - 1, day, hour, minute);
+};
+
+  // ========== EFFECTS ==========
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -59,7 +72,34 @@ export default function SleepScreen() {
     }).start();
   }, []);
 
-  // Tính tổng thời gian ngủ
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const storedUser = await AsyncStorage.getItem("user");
+        if (!storedUser) return;
+
+        const parsed = JSON.parse(storedUser);
+        const uid = parsed._id?.$oid || parsed._id || parsed.id;
+        setUserId(uid);
+
+        const storedGoal = await AsyncStorage.getItem(`sleepGoal_${uid}`);
+        if (storedGoal) {
+          setSleepGoal(Number(storedGoal));
+          setInputGoal(storedGoal);
+        } else {
+          const response = await axios.get(`${API_URL}/users/${uid}`);
+          const goalFromDB = response.data.health_goal?.sleepGoal || 480;
+          setSleepGoal(goalFromDB / 60);
+          setInputGoal((goalFromDB / 60).toString());
+        }
+      } catch (err) {
+        console.error("❌ Load sleep goal failed:", err);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Calculate total sleep duration for today
   useEffect(() => {
     let totalMinutes = 0;
     sleepSchedules.forEach((s) => {
@@ -74,28 +114,235 @@ export default function SleepScreen() {
     setSleepDuration(`${h}h ${m}min`);
   }, [sleepSchedules]);
 
-  // Lấy thời gian hiển thị tương ứng tab
-  const getDisplayDuration = () => {
-    if (selectedTab === "today") return sleepDuration;
-    if (selectedTab === "week") return avgSleepWeek;
-    return avgSleepMonth;
+  // Load today's sleep from backend
+ // Load today's sleep from backend
+useEffect(() => {
+  const fetchTodaySleepSessions = async () => {
+    if (!userId) return;
+    try {
+      const now = new Date();
+      const vietnamOffset = 7 * 60 * 60 * 1000;
+      const nowVN = new Date(now.getTime() + vietnamOffset);
+      const yearVN = nowVN.getUTCFullYear();
+      const monthVN = nowVN.getUTCMonth();
+      const dayVN = nowVN.getUTCDate();
+      const startOfDay = new Date(Date.UTC(yearVN, monthVN, dayVN)).toISOString();
+
+      console.log("Fetching sleep sessions for VN date:", startOfDay);
+      const response = await axios.get(
+        `${API_URL}/healthdata/sleep/today/${userId}?date=${startOfDay}`
+      );
+      const sessions = response.data.sessions || [];
+
+      if (sessions.length > 0) {
+        const mapped = sessions.map((s: any, idx: number) => ({
+          id: idx + 1,
+          bedTime: parseVNTime(s.sleepTime),   // "2025-10-28 21:00" → Date
+          wakeTime: parseVNTime(s.wakeTime),   // "2025-10-28 22:00" → Date
+          isLocked: true,
+        }));
+        console.log("Mapped sleepSchedules:", mapped);
+        setSleepSchedules(mapped);
+      } else {
+        console.log("No sleep sessions found for today.");
+        setSleepSchedules([]);
+      }
+    } catch (err) {
+      console.error("Error loading today sleep sessions:", err);
+    }
+  };
+  fetchTodaySleepSessions();
+}, [userId]);
+
+  // Load chart data for week/month
+  useEffect(() => {
+    if (!userId || selectedTab === "today") return;
+
+    const fetchChartData = async () => {
+      setLoadingChart(true);
+      try {
+        const response = await axios.get(
+          `${API_URL}/healthdata/sleep/stats?userId=${userId}&range=${selectedTab}`
+        );
+        if (response.data.success) {
+          const { data, labels } = response.data;
+
+          if (selectedTab === "week") {
+            setWeekData(data || []);
+            setWeekLabels(response.data.labels); // → ["Mon", "Tue", ...]
+
+            // Chỉ tính trung bình trên ngày có ngủ
+            const validData = data.filter((v) => v > 0);
+            const avgHours =
+              validData.length > 0
+                ? validData.reduce((a, b) => a + b, 0) / validData.length
+                : 0;
+            const h = Math.floor(avgHours);
+            const m = Math.round((avgHours - h) * 60);
+            setAvgSleepWeek(`${h}h ${m}min`);
+          } else if (selectedTab === "month") {
+            setMonthData(data || []);
+
+            const validData = data.filter((v) => v > 0);
+            const avgHours =
+              validData.length > 0
+                ? validData.reduce((a, b) => a + b, 0) / validData.length
+                : 0;
+            const h = Math.floor(avgHours);
+            const m = Math.round((avgHours - h) * 60);
+            setAvgSleepMonth(`${h}h ${m}min`);
+          }
+        }
+      } catch (err) {
+        console.error(`Error loading ${selectedTab} data:`, err);
+        if (selectedTab === "week") {
+          setWeekData([0, 0, 0, 0, 0, 0, 0]);
+          setWeekLabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+          setAvgSleepWeek("0h 0min");
+        } else {
+          setMonthData([0, 0, 0, 0, 0, 0]);
+          setAvgSleepMonth("0h 0min");
+        }
+      } finally {
+        setLoadingChart(false);
+      }
+    };
+    fetchChartData();
+  }, [selectedTab, userId]);
+
+  // Auto-save before leaving screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", () => {
+      console.log("📤 Auto-saving sleep schedule before leaving...");
+      saveSleepSchedule();
+    });
+    return unsubscribe;
+  }, [sleepSchedules, userId]);
+
+  // ========== FUNCTIONS ==========
+
+  const updateSleepGoal = async () => {
+    if (!userId) return;
+    const goalNumber = Number(inputGoal);
+    if (isNaN(goalNumber) || goalNumber < 1 || goalNumber > 24) {
+      Alert.alert("Invalid", "Please enter a valid goal between 1–24 hours.");
+      return;
+    }
+    await AsyncStorage.setItem(`sleepGoal_${userId}`, inputGoal);
+    try {
+      await axios.put(`${API_URL}/users/update-sleep-goal/${userId}`, {
+        sleepGoal: goalNumber * 60,
+      });
+      console.log("✅ Sleep goal updated to backend");
+    } catch (err: any) {
+      console.warn("⚠️ Backend not reachable:", err.message);
+    }
+    setSleepGoal(goalNumber);
+    setEditingGoal(false);
+    Alert.alert("✅ Success", "Sleep goal updated successfully!");
   };
 
-  // Dữ liệu biểu đồ
-  const todaySleepHours = 7.5;
-  const weeklyData = [7, 5.5, 6.8, 7.2, 6, 8, 6.5];
-  const monthlyData = [7, 7.5, 6, 8, 5, 7, 6.5, 7, 8, 6, 7.5, 7];
-
-  const chartConfig = {
-    backgroundGradientFrom: "#fff",
-    backgroundGradientTo: "#fff",
-    decimalPlaces: 1,
-    color: (opacity = 1) => `rgba(124, 58, 237, ${opacity})`,
-    labelColor: () => "#333",
-    propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
+  const addSchedule = () => {
+    const newId = Date.now();
+    setSleepSchedules((prev) => [
+      ...prev,
+      {
+        id: newId,
+        bedTime: new Date(),
+        wakeTime: new Date(new Date().getTime() + 7 * 60 * 60 * 1000),
+        isLocked: false,
+      },
+    ]);
   };
 
+  const removeSchedule = (id: number) => {
+    setSleepSchedules((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const openPicker = (id: number, mode: "bed" | "wake") => {
+    setEditingId(id);
+    setPickerMode(mode);
+    setShowPicker(true);
+  };
+
+  const onChangeTime = (_: any, selectedTime?: Date) => {
+    if (selectedTime && editingId !== null && pickerMode) {
+      setShowPicker(false);
+      setSleepSchedules((prev) =>
+        prev.map((s) =>
+          s.id === editingId
+            ? {
+                ...s,
+                [pickerMode === "bed" ? "bedTime" : "wakeTime"]: selectedTime,
+              }
+            : s
+        )
+      );
+    } else setShowPicker(false);
+  };
+
+  const saveSleepSchedule = async () => {
+  if (!userId) return;
+  try {
+    const newSessions = sleepSchedules
+      .filter((s) => !s.isLocked)
+      .map((s) => ({
+        sleepTime: formatVNTime(s.bedTime),   // "2025-10-28 21:00"
+        wakeTime: formatVNTime(s.wakeTime),   // "2025-10-28 22:00"
+      }));
+
+    if (newSessions.length === 0) {
+      console.log("No new sleep sessions to save.");
+      return;
+    }
+
+    console.log("Saving new sessions:", newSessions);
+    await axios.post(`${API_URL}/healthdata/sleep/schedule/${userId}`, {
+      sessions: newSessions,
+    });
+    console.log("Auto-saved new sleep schedules");
+
+    setSleepSchedules((prev) =>
+      prev.map((s) => ({
+        ...s,
+        isLocked: true,
+      }))
+    );
+  } catch (err) {
+    console.error("Error auto-saving sleep schedule:", err);
+  }
+};
+
+  const getDisplayDuration = () =>
+    selectedTab === "today"
+      ? sleepDuration
+      : selectedTab === "week"
+      ? avgSleepWeek
+      : avgSleepMonth;
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // ========== CHART DATA ==========
   const renderChartData = () => {
+    const todaySleepHours = sleepDuration
+      ? parseFloat(sleepDuration.split("h")[0]) +
+        parseInt(sleepDuration.split(" ")[1]) / 60
+      : 0;
+
+    const chartConfig = {
+      backgroundGradientFrom: "#fff",
+      backgroundGradientTo: "#fff",
+      decimalPlaces: 1,
+      color: (opacity = 1) => `rgba(124, 58, 237, ${opacity})`,
+      labelColor: () => "#333",
+      propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
+    };
+
     if (selectedTab === "today") {
       return {
         labels: ["Goal 🏆", "Actual"],
@@ -107,38 +354,27 @@ export default function SleepScreen() {
         ],
       };
     } else if (selectedTab === "week") {
-      const labels = [
-        "Goal 🏆",
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun",
-      ];
-      const data = [sleepGoal, ...weeklyData];
-      const colors = data.map((_, i) =>
-        i === 0 ? () => "#facc15" : () => "#7c3aed"
-      );
-      return { labels, datasets: [{ data, colors }] };
+  // Backend: [6 ngày trước, ..., hôm nay]
+  const displayData = [...weekData].reverse();     // [hôm nay, 27, 26, ...]
+  const displayLabels = [...weekLabels].reverse(); // ["28 (hôm nay)", "27", ...]
+  console.log(weekLabels);
+
+  const labels = ["Goal", ...displayLabels];
+  const data = [sleepGoal, ...displayData];
+  const colors = data.map((_, i) => (i === 0 ? () => "#facc15" : () => "#7c3aed"));
+
+  return { labels, datasets: [{ data, colors }] };
     } else {
       const labels = [
         "Goal 🏆",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "10",
-        "11",
-        "12",
+        "1-5",
+        "6-10",
+        "11-15",
+        "16-20",
+        "21-25",
+        "26-End",
       ];
-      const data = [sleepGoal, ...monthlyData];
+      const data = [sleepGoal, ...monthData];
       const colors = data.map((_, i) =>
         i === 0 ? () => "#facc15" : () => "#7c3aed"
       );
@@ -153,70 +389,7 @@ export default function SleepScreen() {
       ? screenWidth * 1.6
       : screenWidth * 2.2;
 
-  // Mở TimePicker
-  const openPicker = (id: number, mode: "bed" | "wake") => {
-    setEditingId(id);
-    setPickerMode(mode);
-    setShowPicker(true);
-  };
-
-  // Chọn giờ
-  const onChangeTime = (event: any, selectedTime?: Date) => {
-  if (selectedTime && editingId !== null && pickerMode) {
-    setShowPicker(false);
-    setSleepSchedules((prev) =>
-      prev.map((s) => {
-        if (s.id === editingId) {
-          const updated =
-            pickerMode === "bed"
-              ? { ...s, bedTime: selectedTime }
-              : { ...s, wakeTime: selectedTime };
-
-          const bed =
-            updated.bedTime.getHours() * 60 + updated.bedTime.getMinutes();
-          const wake =
-            updated.wakeTime.getHours() * 60 + updated.wakeTime.getMinutes();
-
-          // ✅ Nếu wake < bed => coi như wake là ngày hôm sau
-          const duration = wake >= bed ? wake - bed : wake + 24 * 60 - bed;
-
-          if (duration <= 0) {
-            alert("Wake-up time must be after bedtime ⏰");
-            return s;
-          }
-
-          return updated;
-        }
-        return s;
-      })
-    );
-  } else setShowPicker(false);
-};
-
-  // Thêm schedule
-  const addSchedule = () => {
-    const newId = Date.now();
-    const newItem = {
-      id: newId,
-      bedTime: new Date(),
-      wakeTime: new Date(new Date().getTime() + 7 * 60 * 60 * 1000),
-    };
-    setSleepSchedules((prev) => [...prev, newItem]);
-    Animated.spring(listAnim, { toValue: 1, useNativeDriver: true }).start();
-  };
-
-  // Xóa schedule
-  const removeSchedule = (id: number) => {
-    Animated.timing(listAnim, {
-      toValue: 0.9,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setSleepSchedules((prev) => prev.filter((s) => s.id !== id));
-      listAnim.setValue(1);
-    });
-  };
-
+  // ================= RENDER =================
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -224,7 +397,7 @@ export default function SleepScreen() {
     >
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-          {/* Header */}
+          {/* HEADER */}
           <LinearGradient colors={["#6366f1", "#a855f7"]} style={styles.header}>
             <View style={styles.headerTop}>
               <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -235,7 +408,7 @@ export default function SleepScreen() {
             </View>
           </LinearGradient>
 
-          {/* Sleep Duration */}
+          {/* SLEEP INFO */}
           <Text style={styles.avgSleepText}>
             <Text style={{ fontWeight: "700" }}>
               {selectedTab === "today"
@@ -249,7 +422,7 @@ export default function SleepScreen() {
             </Text>
           </Text>
 
-          {/* Tabs */}
+          {/* TABS */}
           <View style={styles.tabsContainer}>
             {["today", "week", "month"].map((tab) => (
               <TouchableOpacity
@@ -269,34 +442,44 @@ export default function SleepScreen() {
             ))}
           </View>
 
-          {/* Chart */}
+          {/* CHART */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.chartContainer}>
-              <BarChart
-                data={renderChartData()}
-                width={chartWidth}
-                height={220}
-                fromZero
-                yAxisSuffix="h"
-                yAxisLabel=""
-                chartConfig={chartConfig}
-                style={styles.chart}
-                withCustomBarColorFromData
-                flatColor
-                showValuesOnTopOfBars
-              />
+              {loadingChart ? (
+                <Text
+                  style={{
+                    textAlign: "center",
+                    marginTop: 50,
+                    color: "#6b7280",
+                  }}
+                >
+                  Loading chart...
+                </Text>
+              ) : (
+                <BarChart
+                  data={renderChartData()}
+                  width={chartWidth}
+                  height={220}
+                  fromZero
+                  yAxisSuffix="h"
+                  chartConfig={{
+                    backgroundGradientFrom: "#fff",
+                    backgroundGradientTo: "#fff",
+                    decimalPlaces: 1,
+                    color: (opacity = 1) => `rgba(124,58,237,${opacity})`,
+                    labelColor: () => "#333",
+                    propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
+                  }}
+                  style={styles.chart}
+                  withCustomBarColorFromData
+                  flatColor
+                  showValuesOnTopOfBars
+                />
+              )}
             </View>
           </ScrollView>
 
-          <Text style={styles.sleepRateText}>
-            {selectedTab === "today"
-              ? "Sleep rate today: 94% 😴"
-              : selectedTab === "week"
-              ? "Sleep rate this week: 88% 🌙"
-              : "Sleep rate this month: 92% 💤"}
-          </Text>
-
-          {/* Goal Card */}
+          {/* GOAL INPUT */}
           <LinearGradient
             colors={["#fef9c3", "#fde68a"]}
             style={styles.goalCard}
@@ -308,39 +491,35 @@ export default function SleepScreen() {
                 color="#92400e"
                 style={{ marginRight: 6 }}
               />
-              <Text style={{fontSize: 16, fontWeight: "700", color: "#78350f" }}>
+              <Text
+                style={{ fontSize: 16, fontWeight: "700", color: "#78350f" }}
+              >
                 Sleep Goal (hours)
               </Text>
             </View>
-
             {editingGoal ? (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <TextInput
                   value={inputGoal}
                   onChangeText={setInputGoal}
                   keyboardType="numeric"
-                  style={[styles.goalInput, { borderColor: "#92400e" }]}
+                  style={styles.goalInput}
                 />
                 <TouchableOpacity
-                  style={[styles.saveGoalBtn, { backgroundColor: "#92400e" }]}
-                  onPress={() => {
-                    setSleepGoal(Number(inputGoal));
-                    setEditingGoal(false);
-                  }}
+                  style={styles.saveGoalBtn}
+                  onPress={updateSleepGoal}
                 >
                   <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity onPress={() => setEditingGoal(true)}>
-                <Text style={[styles.goalText, { color: "#78350f" }]}>
-                  {sleepGoal} h
-                </Text>
+                <Text style={styles.goalText}>{sleepGoal} h</Text>
               </TouchableOpacity>
             )}
           </LinearGradient>
 
-          {/* Schedule */}
+          {/* SCHEDULE */}
           <LinearGradient
             colors={["#f3e8ff", "#e9d5ff"]}
             style={styles.scheduleCard}
@@ -359,40 +538,54 @@ export default function SleepScreen() {
               </Text>
             </View>
 
-            {sleepSchedules.map((s) => (
-              <Animated.View
-                key={s.id}
-                style={{ transform: [{ scale: listAnim }] }}
+            {sleepSchedules.length > 0 ? (
+              sleepSchedules.map((s) => (
+                <Animated.View
+                  key={s.id}
+                  style={{ transform: [{ scale: listAnim }] }}
+                >
+                  <View style={styles.scheduleRow}>
+                    <View style={{ alignItems: "center" }}>
+                      <Ionicons name="moon" size={18} color="#6d28d9" />
+                      <TouchableOpacity
+                        disabled={s.isLocked}
+                        onPress={() => openPicker(s.id, "bed")}
+                      >
+                        <Text style={styles.timeText}>
+                          {formatTime(s.bedTime)}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Ionicons name="arrow-forward" size={20} color="#5b21b6" />
+
+                    <View style={{ alignItems: "center" }}>
+                      <Ionicons name="sunny" size={18} color="#a855f7" />
+                      <TouchableOpacity
+                        disabled={s.isLocked}
+                        onPress={() => openPicker(s.id, "wake")}
+                      >
+                        <Text style={styles.timeText}>
+                          {formatTime(s.wakeTime)}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {!s.isLocked && (
+                      <TouchableOpacity onPress={() => removeSchedule(s.id)}>
+                        <Ionicons name="trash" size={20} color="#b91c1c" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </Animated.View>
+              ))
+            ) : (
+              <Text
+                style={{ textAlign: "center", color: "#6b7280", marginTop: 10 }}
               >
-                <View style={styles.scheduleRow}>
-                  <View style={{ alignItems: "center" }}>
-                    <Ionicons name="moon" size={18} color="#6d28d9" />
-                    <TouchableOpacity onPress={() => openPicker(s.id, "bed")}>
-                      <Text style={styles.timeText}>
-                        {s.bedTime.getHours().toString().padStart(2, "0")}:
-                        {s.bedTime.getMinutes().toString().padStart(2, "0")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <Ionicons name="arrow-forward" size={20} color="#5b21b6" />
-
-                  <View style={{ alignItems: "center" }}>
-                    <Ionicons name="sunny" size={18} color="#a855f7" />
-                    <TouchableOpacity onPress={() => openPicker(s.id, "wake")}>
-                      <Text style={styles.timeText}>
-                        {s.wakeTime.getHours().toString().padStart(2, "0")}:
-                        {s.wakeTime.getMinutes().toString().padStart(2, "0")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <TouchableOpacity onPress={() => removeSchedule(s.id)}>
-                    <Ionicons name="trash" size={20} color="#b91c1c" />
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            ))}
+                No schedule today.
+              </Text>
+            )}
 
             <TouchableOpacity style={styles.addBtn} onPress={addSchedule}>
               <Ionicons name="add-circle" size={22} color="#6d28d9" />
@@ -451,6 +644,39 @@ const styles = StyleSheet.create({
   activeTabText: { color: "#fff" },
   chartContainer: { marginTop: 20, alignItems: "center" },
   chart: { borderRadius: 16 },
+  goalCard: {
+    marginTop: 25,
+    marginHorizontal: 20,
+    borderRadius: 12,
+    padding: 16,
+  },
+  goalInput: {
+    borderWidth: 1,
+    borderColor: "#92400e",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#78350f",
+    width: 70,
+    textAlign: "center",
+    marginRight: 10,
+    backgroundColor: "#fff7ed",
+  },
+  saveGoalBtn: {
+    backgroundColor: "#92400e",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  goalText: {
+    fontSize: 20,
+    fontWeight: "800",
+    marginTop: 6,
+    textAlign: "center",
+    color: "#78350f",
+  },
   scheduleCard: {
     marginTop: 20,
     marginHorizontal: 20,
@@ -470,42 +696,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 10,
     gap: 6,
-  },
-  goalCard: {
-    marginTop: 25,
-    marginHorizontal: 20,
-    borderRadius: 12,
-    padding: 16,
-  },
-  goalInput: {
-    borderWidth: 1,
-    borderColor: "#7c3aed",
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    width: 80,
-    marginRight: 8,
-    backgroundColor: "#fff",
-  },
-  saveGoalBtn: {
-    backgroundColor: "#7c3aed",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginTop: 10,
-    alignSelf: "center",
-  },
-  goalText: {
-    color: "#78350f",
-    fontWeight: "700",
-    fontSize: 16,
-    marginTop: 4,
-    marginLeft: 5,
-  },
-  sleepRateText: {
-    marginTop: 10,
-    fontWeight: "700",
-    color: "#4c1d95",
-    fontSize: 16,
-    textAlign: "center",
   },
 });

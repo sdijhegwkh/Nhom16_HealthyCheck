@@ -70,7 +70,7 @@ export default function SignUpScreen({ navigation }: Props) {
 
     try {
       const response = await fetch(
-        "https://nhom16-healthycheck.onrender.com/users/signup",
+        "http://192.168.1.4:5000/users/signup",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
