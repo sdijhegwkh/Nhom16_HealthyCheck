@@ -32,6 +32,7 @@ export default function WorkoutScreen() {
   const [editingGoal, setEditingGoal] = useState(false);
   const [inputGoal, setInputGoal] = useState("60");
   const [userId, setUserId] = useState<string | null>(null);
+  const [weekLabels, setWeekLabels] = useState<string[]>([]);
 
   const [workouts, setWorkouts] = useState<
     { id: number; note: string; duration: number; isLocked: boolean }[]
@@ -52,28 +53,41 @@ export default function WorkoutScreen() {
     Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }).start();
   }, []);
 
+  // SỬA 1: loadUser giống SleepScreen
   useEffect(() => {
-    const loadUser = async () => {
-      const stored = await AsyncStorage.getItem("user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const uid = parsed._id?.$oid || parsed._id;
+    const loadData = async () => {
+      try {
+        const storedUser = await AsyncStorage.getItem("user");
+        if (!storedUser) {
+          console.warn("Không có user trong AsyncStorage");
+          return;
+        }
+
+        const parsed = JSON.parse(storedUser);
+        const uid = parsed._id?.$oid || parsed._id || parsed.id;
+        if (!uid) {
+          console.warn("userId không hợp lệ:", parsed);
+          return;
+        }
+
         setUserId(uid);
 
-        const goal = await AsyncStorage.getItem(`workoutGoal_${uid}`);
-        if (goal) {
-          setWorkoutGoal(Number(goal));
-          setInputGoal(goal);
+        const storedGoal = await AsyncStorage.getItem(`workoutGoal_${uid}`);
+        if (storedGoal) {
+          setWorkoutGoal(Number(storedGoal));
+          setInputGoal(storedGoal);
         } else {
-          const res = await axios.get(`${API_URL}/users/${uid}`);
-          const dbGoal = res.data.health_goal?.workoutGoal || 3600;
-          const mins = Math.round(dbGoal / 60);
+          const response = await axios.get(`${API_URL}/users/${uid}`);
+          const goalFromDB = response.data.health_goal?.workoutGoal || 3600;
+          const mins = Math.round(goalFromDB / 60);
           setWorkoutGoal(mins);
           setInputGoal(mins.toString());
         }
+      } catch (err) {
+        console.error("Load workout goal failed:", err);
       }
     };
-    loadUser();
+    loadData();
   }, []);
 
   // Load today workouts
@@ -110,14 +124,15 @@ export default function WorkoutScreen() {
       try {
         const res = await axios.get(`${API_URL}/healthdata/workout/stats?userId=${userId}&range=${selectedTab}`);
         if (res.data.success) {
-          const { data } = res.data;
+          const { data, labels } = res.data;
           if (selectedTab === "week") {
-            setWeekData(data);
+            setWeekData(data || []);
+            setWeekLabels(labels || []); // ← LẤY labels
             const valid = data.filter((v: number) => v > 0);
             const avg = valid.length ? valid.reduce((a: number, b: number) => a + b, 0) / valid.length : 0;
             setAvgWorkoutWeek(`${Math.round(avg)} min`);
           } else {
-            setMonthData(data);
+            setMonthData(data || []);
             const valid = data.filter((v: number) => v > 0);
             const avg = valid.length ? valid.reduce((a: number, b: number) => a + b, 0) / valid.length : 0;
             setAvgWorkoutMonth(`${Math.round(avg)} min`);
@@ -125,6 +140,15 @@ export default function WorkoutScreen() {
         }
       } catch (err) {
         console.error("Load stats error:", err);
+        // Fallback
+        if (selectedTab === "week") {
+          setWeekData([0, 0, 0, 0, 0, 0, 0]);
+          setWeekLabels(["", "", "", "", "", "", ""]);
+          setAvgWorkoutWeek("0 min");
+        } else {
+          setMonthData([0, 0, 0, 0, 0, 0]);
+          setAvgWorkoutMonth("0 min");
+        }
       } finally {
         setLoadingChart(false);
       }
@@ -132,24 +156,51 @@ export default function WorkoutScreen() {
     fetchStats();
   }, [selectedTab, userId]);
 
-  // Auto-save
+  // SỬA 2: Auto-save trước khi rời màn hình
   useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", saveWorkout);
+    const unsubscribe = navigation.addListener("beforeRemove", async (e) => {
+      const hasUnsaved = workouts.some(w => w.id && !w.isLocked);
+      if (!hasUnsaved) return;
+
+      e.preventDefault();
+
+      try {
+        await saveWorkout();
+        navigation.dispatch(e.data.action);
+      } catch (err) {
+        Alert.alert("Lỗi", "Không thể lưu workout. Vui lòng thử lại.");
+      }
+    });
+
     return unsubscribe;
-  }, [workouts, userId]);
+  }, [workouts, userId, navigation]);
 
   // Functions
+  // SỬA 4: updateGoal giống SleepScreen
   const updateGoal = async () => {
-    if (!userId) return;
-    const goal = Number(inputGoal);
-    if (isNaN(goal) || goal < 1) return Alert.alert("Invalid", "Enter valid goal");
-    await AsyncStorage.setItem(`workoutGoal_${userId}`, goal.toString());
-    try {
-      await axios.put(`${API_URL}/users/update-workout-goal/${userId}`, { workoutGoal: goal * 60 });
-    } catch (err) { console.warn("Backend unreachable"); }
-    setWorkoutGoal(goal);
-    setEditingGoal(false);
-  };
+  if (!userId) return;
+
+  const goal = Number(inputGoal);
+  if (isNaN(goal) || goal < 1) {
+    Alert.alert("Invalid", "Please enter a valid goal (min)");
+    return;
+  }
+
+  await AsyncStorage.setItem(`workoutGoal_${userId}`, goal.toString());
+
+  try {
+    await axios.put(`${API_URL}/users/update-workout-goal/${userId}`, {
+      workoutGoal: goal, // GỬI PHÚT, KHÔNG NHÂN 60
+    });
+    console.log("Workout goal updated to backend (minutes)");
+  } catch (err: any) {
+    console.warn("Backend not reachable:", err.message);
+  }
+
+  setWorkoutGoal(goal);
+  setEditingGoal(false);
+  Alert.alert("Success", "Workout goal updated!");
+};
 
   const addWorkout = () => {
     if (!durationInput) return Alert.alert("Enter duration");
@@ -166,19 +217,40 @@ export default function WorkoutScreen() {
     setWorkouts(prev => prev.filter(w => w.id !== id));
   };
 
+  // SỬA 3: saveWorkout + log + throw
   const saveWorkout = async () => {
-    if (!userId) return;
-    const newSessions = workouts
-      .filter(w => !w.isLocked)
-      .map(w => ({ note: w.note, durationMin: w.duration }));
+    if (!userId) {
+      console.warn("Không có userId khi lưu workout");
+      return;
+    }
 
-    if (!newSessions.length) return;
+    const newSessions = workouts
+      .filter(w => w.id && !w.isLocked)
+      .map(w => ({
+        note: w.note || "No note",
+        durationMin: w.duration,
+      }));
+
+    if (!newSessions.length) {
+      console.log("Không có session mới để lưu");
+      return;
+    }
+
+    console.log("Đang lưu workout:", newSessions);
 
     try {
-      await axios.post(`${API_URL}/healthdata/workout/schedule/${userId}`, { sessions: newSessions });
-      setWorkouts(prev => prev.map(w => ({ ...w, isLocked: true })));
-    } catch (err) {
-      console.error("Save workout error:", err);
+      const res = await axios.post(
+        `${API_URL}/healthdata/workout/schedule/${userId}`,
+        { sessions: newSessions }
+      );
+      console.log("Lưu workout thành công:", res.data);
+
+      setWorkouts(prev =>
+        prev.map(w => w.id ? { ...w, isLocked: true } : w)
+      );
+    } catch (err: any) {
+      console.error("Lỗi lưu workout:", err.response?.data || err.message);
+      throw err;
     }
   };
 
@@ -193,18 +265,11 @@ export default function WorkoutScreen() {
         datasets: [{ data: [workoutGoal, totalToday], colors: [() => "#facc15", () => "#ef4444"] }],
       };
     } else if (selectedTab === "week") {
-      const dayLabels: string[] = [];
-      const dayData: number[] = [];
-      const today = new Date();
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        dayLabels.push(i === 0 ? "Today" : d.getDate().toString());
-        dayData.push(weekData[i] || 0);
-      }
-      const labels = ["Goal", ...dayLabels];
-      const data = [workoutGoal, ...dayData];
-      const colors = data.map((_, i) => i === 0 ? () => "#facc15" : () => "#ef4444");
+      const displayData = [...weekData].reverse();
+      const displayLabels = [...weekLabels].reverse();
+      const labels = ["Goal", ...displayLabels];
+      const data = [workoutGoal, ...displayData];
+      const colors = data.map((_, i) => (i === 0 ? () => "#facc15" : () => "#ef4444"));
       return { labels, datasets: [{ data, colors }] };
     } else {
       const labels = ["Goal", "1-5", "6-10", "11-15", "16-20", "21-25", "26-End"];

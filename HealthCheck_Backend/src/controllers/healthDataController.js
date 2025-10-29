@@ -220,71 +220,58 @@ export const updateSleepSchedule = async (req, res) => {
 
     const db = getDB();
 
-    for (const s of sessions) {
-      const sleepStr = s.sleepTime; // "2025-10-28 21:00"
-      const wakeStr  = s.wakeTime;  // "2025-10-29 03:00"
+    // TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM (LÚC NGƯỜI DÙNG NHẬP)
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
 
-      const sleepDate = new Date(`${sleepStr} GMT+0700`);
-      const wakeDate  = new Date(`${wakeStr} GMT+0700`);
+    const yearVN = nowVN.getUTCFullYear();
+    const monthVN = nowVN.getUTCMonth();
+    const dayVN = nowVN.getUTCDate();
 
-      if (isNaN(sleepDate) || isNaN(wakeDate)) continue;
+    const recordStart = new Date(Date.UTC(yearVN, monthVN, dayVN));
+    const recordEnd   = new Date(Date.UTC(yearVN, monthVN, dayVN + 1));
 
-      const durationMin = Math.round((wakeDate - sleepDate) / 60000);
-      if (durationMin <= 0) continue;
+    // TÌM BẢN GHI NGÀY HIỆN TẠI (ĐÃ ĐƯỢC TẠO KHI LOGIN)
+    let healthRecord = await db.collection("healthdata").findOne({
+      userId: new ObjectId(userId),
+      date: { $gte: recordStart, $lt: recordEnd },
+    });
 
-      // XÁC ĐỊNH NGÀY DỰA VÀO WAKE TIME (người dùng thức dậy vào ngày nào → ngày đó)
-      const yearVN = wakeDate.getFullYear();
-      const monthVN = wakeDate.getMonth();
-      const dayVN = wakeDate.getDate();
-
-      const recordStart = new Date(Date.UTC(yearVN, monthVN, dayVN));
-      const recordEnd   = new Date(Date.UTC(yearVN, monthVN, dayVN + 1));
-
-      let healthRecord = await db.collection("healthdata").findOne({
-        userId: new ObjectId(userId),
-        date: { $gte: recordStart, $lt: recordEnd },
-      });
-
-      if (!healthRecord) {
-        healthRecord = {
-          userId: new ObjectId(userId),
-          date: recordStart,
-          healthScore: 0,
-          steps: { stepCount: 0, distanceKm: 0, durationMin: 0, burnedCalories: 0 },
-          sleep: { totalSleepHr: 0, sessions: [], sleepDuration: 0 },
-          nutrition: {
-            caloriesConsumed: 0, totalFatGrams: 0, totalFatPercent: 0,
-            totalProteinGrams: 0, totalProteinPercent: 0,
-            totalCarbsGrams: 0, totalCarbsPercent: 0,
-          },
-          water: { waterConsumed: 0 },
-          workout: { workDuration: 0, sessions: [] },
-        };
-        await db.collection("healthdata").insertOne(healthRecord);
-      }
-
-      await db.collection("healthdata").updateOne(
-        {
-          userId: new ObjectId(userId),
-          date: { $gte: recordStart, $lt: recordEnd },
-        },
-        {
-          $push: {
-            "sleep.sessions": {
-              sleepTime: sleepStr,
-              wakeTime: wakeStr,
-              durationMin,
-            },
-          },
-          $inc: {
-            "sleep.sleepDuration": durationMin,
-            "sleep.totalSleepHr": durationMin / 60,
-          },
-        }
-      );
+    if (!healthRecord) {
+      return res.status(404).json({ message: "Health record not found for today" });
     }
 
-    res.json({ message: "Saved!" });
+    // GỘP TẤT CẢ SESSION → 1 LẦN UPDATE
+    const validSessions = sessions
+      .map(s => {
+        const sleepDate = new Date(s.sleepTime);
+        const wakeDate  = new Date(s.wakeTime);
+        if (isNaN(sleepDate) || isNaN(wakeDate)) return null;
+
+        const durationMin = Math.round((wakeDate - sleepDate) / 60000);
+        return durationMin > 0 ? { ...s, durationMin } : null;
+      })
+      .filter(Boolean);
+
+    if (validSessions.length === 0) {
+      return res.json({ message: "No valid sessions" });
+    }
+
+    const totalDuration = validSessions.reduce((sum, s) => sum + s.durationMin, 0);
+
+    await db.collection("healthdata").updateOne(
+      { _id: healthRecord._id }, // DÙNG _id → CHẮC CHẮN CẬP NHẬT
+      {
+        $push: { "sleep.sessions": { $each: validSessions } },
+        $inc: {
+          "sleep.sleepDuration": totalDuration,
+          "sleep.totalSleepHr": Math.round(totalDuration / 60),
+        },
+      }
+    );
+
+    res.json({ message: "Sleep saved!" });
   } catch (err) {
     console.error("updateSleepSchedule error:", err);
     res.status(500).json({ message: "Server error" });
@@ -325,7 +312,6 @@ export const getTodaySleepSessions = async (req, res) => {
   }
 };
 //thong ke bieu do sleep
-// getSleepStats.js
 export async function getSleepStats(req, res) {
   try {
     const { userId, range } = req.query;
@@ -463,64 +449,88 @@ export const updateWorkoutSchedule = async (req, res) => {
   try {
     const { userId } = req.params;
     const { sessions } = req.body;
-    if (!sessions?.length) return res.status(400).json({ message: "No sessions" });
+
+    if (!sessions?.length) {
+      return res.status(400).json({ message: "No sessions" });
+    }
 
     const db = getDB();
-    const vietnamOffset = 7 * 60 * 60 * 1000;
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
 
+    // TÍNH NGÀY VIỆT NAM MỘT LẦN
+    const nowUTC = new Date();
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    const yearVN = nowVN.getUTCFullYear();
+    const monthVN = nowVN.getUTCMonth();
+    const dayVN = nowVN.getUTCDate();
+
+    const recordStart = new Date(Date.UTC(yearVN, monthVN, dayVN));
+    const recordEnd = new Date(Date.UTC(yearVN, monthVN, dayVN + 1));
+
+    // TÌM HOẶC TẠO MỚI RECORD
+    let record = await db.collection("healthdata").findOne({
+      userId: new ObjectId(userId),
+      date: { $gte: recordStart, $lt: recordEnd },
+    });
+
+    if (!record) {
+      const newRecord = {
+        userId: new ObjectId(userId),
+        date: recordStart,
+        healthScore: 0,
+        steps: { stepCount: 0, distanceKm: 0, durationMin: 0, burnedCalories: 0 },
+        sleep: { totalSleepHr: 0, sessions: [], sleepDuration: 0 },
+        nutrition: {
+          caloriesConsumed: 0, totalFatGrams: 0, totalFatPercent: 0,
+          totalProteinGrams: 0, totalProteinPercent: 0,
+          totalCarbsGrams: 0, totalCarbsPercent: 0,
+        },
+        water: { waterConsumed: 0 },
+        workout: { workDuration: 0, sessions: [] },
+      };
+      const insertResult = await db.collection("healthdata").insertOne(newRecord);
+      record = { ...newRecord, _id: insertResult.insertedId };
+    }
+
+    // CẬP NHẬT TỪNG SESSION
     for (const s of sessions) {
       const durationMin = Math.round(s.durationMin);
       if (durationMin <= 0) continue;
 
-      const now = new Date();
-      const nowVN = new Date(now.getTime() + vietnamOffset);
-      const yearVN = nowVN.getUTCFullYear();
-      const monthVN = nowVN.getUTCMonth();
-      const dayVN = nowVN.getUTCDate();
-
-      const recordStart = new Date(Date.UTC(yearVN, monthVN, dayVN));
-      const recordEnd = new Date(Date.UTC(yearVN, monthVN, dayVN + 1));
-
-      let record = await db.collection("healthdata").findOne({
-        userId: new ObjectId(userId),
-        date: { $gte: recordStart, $lt: recordEnd },
-      });
-
-      if (!record) {
-        record = { userId: new ObjectId(userId), date: recordStart, workout: { workDuration: 0, sessions: [] }, /* other fields */ };
-        await db.collection("healthdata").insertOne(record);
-      }
-
       await db.collection("healthdata").updateOne(
         { _id: record._id },
         {
-          $push: { "workout.sessions": { note: s.note, durationMin } },
+          $push: {
+            "workout.sessions": {
+              note: s.note || "No note",
+              durationMin,
+            },
+          },
           $inc: { "workout.workDuration": durationMin },
         }
       );
     }
 
-    res.json({ message: "Workout saved" });
+    res.json({ message: "Workout saved!" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error" });
+    console.error("updateWorkoutSchedule error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 // GET /healthdata/workout/today/:userId
 export const getTodayWorkoutSessions = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { date } = req.query; // date là string hoặc undefined
+    const { date } = req.query;
     const db = getDB();
 
     let startOfDay;
 
     if (date && typeof date === "string") {
-      startOfDay = new Date(date); // Dùng trực tiếp
+      startOfDay = new Date(date);
     } else {
-      // Nếu không có date → dùng ngày VN hiện tại
-      const now = new Date();
-      const nowVN = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const nowUTC = new Date();
+      const nowVN = new Date(nowUTC.getTime() + 7 * 60 * 60 * 1000);
       startOfDay = new Date(Date.UTC(
         nowVN.getUTCFullYear(),
         nowVN.getUTCMonth(),
@@ -550,33 +560,126 @@ export const getWorkoutStats = async (req, res) => {
   try {
     const { userId, range } = req.query;
     const db = getDB();
-    const nowUTC = new Date(); nowUTC.setHours(0,0,0,0);
 
-    let startDate;
-    let data = [];
-
-    if (range === "week") {
-      startDate = new Date(nowUTC);
-      startDate.setDate(nowUTC.getDate() - 6);
-
-      data = await db.collection("healthdata").find({
-        userId: new ObjectId(userId),
-        date: { $gte: startDate, $lte: nowUTC },
-      }).sort({ date: 1 }).toArray();
-
-      const weekData = [];
-      for (let i = 0; i < 7; i++) {
-        const target = new Date(startDate);
-        target.setDate(startDate.getDate() + i);
-        const record = data.find(r => new Date(r.date).toDateString() === target.toDateString());
-        weekData.push(record?.workout?.workDuration || 0);
-      }
-
-      return res.json({ success: true, data: weekData });
+    if (!userId || !range || !["week", "month"].includes(range)) {
+      return res.status(400).json({ success: false, message: "Invalid params" });
     }
 
-    // month logic tương tự sleep...
+    // === TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM ===
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+
+    const vnYear = nowVN.getUTCFullYear();
+    const vnMonth = nowVN.getUTCMonth();
+    const vnDate = nowVN.getUTCDate();
+
+    const todayKey = `${vnYear}-${String(vnMonth + 1).padStart(2, '0')}-${String(vnDate).padStart(2, '0')}`;
+
+    // === TÍNH KHOẢNG NGÀY ===
+    let startDateUTC, endDateUTC;
+
+    if (range === "week") {
+      const todayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+      startDateUTC = new Date(todayUTC);
+      startDateUTC.setUTCDate(startDateUTC.getUTCDate() - 6);
+      endDateUTC = new Date(todayUTC);
+      endDateUTC.setUTCDate(endDateUTC.getUTCDate() + 1);
+    } else {
+      const todayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+      startDateUTC = new Date(todayUTC);
+      startDateUTC.setUTCDate(startDateUTC.getUTCDate() - 29);
+      endDateUTC = new Date(todayUTC);
+      endDateUTC.setUTCDate(endDateUTC.getUTCDate() + 1);
+    }
+
+    // === LẤY DỮ LIỆU ===
+    const data = await db
+      .collection("healthdata")
+      .find({
+        userId: new ObjectId(userId),
+        date: { $gte: startDateUTC, $lt: endDateUTC },
+      })
+      .sort({ date: 1 })
+      .toArray();
+
+    // === NHÓM THEO NGÀY VIỆT NAM ===
+    const recordsByVNDate = {};
+
+    data.forEach(record => {
+      if (!record.workout?.workDuration) return;
+
+      const recordDate = new Date(record.date);
+      const key = `${recordDate.getUTCFullYear()}-${String(recordDate.getUTCMonth() + 1).padStart(2, '0')}-${String(recordDate.getUTCDate()).padStart(2, '0')}`;
+      recordsByVNDate[key] = record.workout.workDuration;
+    });
+
+    // === TUẦN ===
+    if (range === "week") {
+      const weekData = [];
+      const weekLabels = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const targetUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+        targetUTC.setUTCDate(targetUTC.getUTCDate() - i);
+
+        const key = `${targetUTC.getUTCFullYear()}-${String(targetUTC.getUTCMonth() + 1).padStart(2, '0')}-${String(targetUTC.getUTCDate()).padStart(2, '0')}`;
+        const duration = recordsByVNDate[key] || 0;
+
+        weekData.push(duration);
+        const dayStr = targetUTC.getUTCDate().toString();
+        weekLabels.push(key === todayKey ? `${dayStr} (hôm nay)` : dayStr);
+      }
+
+      return res.json({
+        success: true,
+        range: "week",
+        data: weekData,
+        labels: weekLabels,
+      });
+    }
+
+    // === THÁNG ===
+    if (range === "month") {
+      const ranges = [
+        { start: 1, end: 5 },
+        { start: 6, end: 10 },
+        { start: 11, end: 15 },
+        { start: 16, end: 20 },
+        { start: 21, end: 25 },
+        { start: 26, end: 31 },
+      ];
+
+      const totalDuration = [0, 0, 0, 0, 0, 0];
+      const countDays = [0, 0, 0, 0, 0, 0];
+
+      Object.keys(recordsByVNDate).forEach(key => {
+        const day = parseInt(key.split("-")[2]);
+        const duration = recordsByVNDate[key];
+
+        for (let i = 0; i < ranges.length; i++) {
+          if (day >= ranges[i].start && day <= ranges[i].end) {
+            totalDuration[i] += duration;
+            countDays[i]++;
+            break;
+          }
+        }
+      });
+
+      const avgData = totalDuration.map((total, i) =>
+        countDays[i] > 0 ? Math.round(total / countDays[i]) : 0
+      );
+
+      return res.json({
+        success: true,
+        range: "month",
+        data: avgData,
+        labels: ["1-5", "6-10", "11-15", "16-20", "21-25", "26-End"],
+      });
+    }
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("getWorkoutStats error:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
