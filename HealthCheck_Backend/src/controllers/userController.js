@@ -3,8 +3,12 @@ import { getDB } from "../config/db.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { ObjectId } from "mongodb";
-
-
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.tz.setDefault('Asia/Ho_Chi_Minh');
 function toObjectId(id) {
   try {
     // Nếu id là object có $oid
@@ -36,9 +40,11 @@ export async function createUser(req, res) {
   }
 }
 // Sign Up
+// Đặt timezone mặc định là Asia/Ho_Chi_Minh
+dayjs.tz.setDefault('Asia/Ho_Chi_Minh');
 export async function signUp(req, res) {
   try {
-    const { name, gender, email, age, password, height, weight, bmi } = req.body;
+    const { name, gender, email, age, password, height, weight } = req.body;
     const db = getDB();
 
     // Kiểm tra user đã tồn tại
@@ -50,7 +56,22 @@ export async function signUp(req, res) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ Thiết lập mục tiêu sức khỏe mặc định
+    // Tính BMI
+    const heightInMeter = height / 100;
+    const bmi = parseFloat((weight / (heightInMeter * heightInMeter)).toFixed(1));
+
+    // Lấy ngày hiện tại theo giờ Việt Nam (YYYY-MM-DD)
+    const todayVN = dayjs().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+
+    // Tạo bản ghi đầu tiên trong lịch sử body stats
+    const initialBodyStats = {
+      date: todayVN,
+      height: parseFloat(height),
+      weight: parseFloat(weight),
+      bmi,
+    };
+
+    // Thiết lập mục tiêu sức khỏe mặc định
     let health_goal;
     if (gender.toLowerCase() === "male") {
       health_goal = {
@@ -58,36 +79,37 @@ export async function signUp(req, res) {
         caloriesGoal: 2500,
         workoutGoal: 120,
         waterGoal: 2000,
-        sleepGoal:460,
+        sleepGoal: 480,
       };
     } else {
-      // Mặc định là nữ nếu không phải male
       health_goal = {
         stepsGoal: 7500,
         caloriesGoal: 2000,
         workoutGoal: 120,
         waterGoal: 2000,
-        sleepGoal:460,
+        sleepGoal: 480,
       };
     }
 
-    // ✅ Lưu vào MongoDB
+    // Thời gian tạo theo giờ Việt Nam
+    const createdAtVN = dayjs().tz('Asia/Ho_Chi_Minh').toDate();
+
+    // Lưu vào MongoDB
     const result = await db.collection("user").insertOne({
       name,
       gender,
       email,
       age,
       password: hashedPassword,
-      height,
-      weight,
-      bmi,
+      bodyStatsHistory: [initialBodyStats], 
       health_goal,
-      createdAt: new Date(),
+      createdAt: createdAtVN,
     });
 
     res.status(201).json({
       message: "User created successfully",
       id: result.insertedId,
+      bodyStatsHistory: [initialBodyStats],
       health_goal,
     });
   } catch (err) {
@@ -317,5 +339,61 @@ export const updateWaterGoal = async (req, res) => {
   } catch (err) {
     console.error("updateWaterGoal error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getCurrentBMI = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Kiểm tra ID hợp lệ
+    if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
+      return res.status(400).json({ error: "Invalid user ID format" });
+    }
+
+    const db = getDB();
+    const user = await db.collection("users").findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { bmi: 1, height: 1, weight: 1 } }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      bmi: user.bmi ?? null,
+      height: user.height ?? null,
+      weight: user.weight ?? null,
+    });
+  } catch (err) {
+    console.error("getCurrentBMI error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+export const updateBMIUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { height, weight, bmi } = req.body;
+
+    if (!height || !weight || !bmi) {
+      return res.status(400).json({ error: "Missing data" });
+    }
+
+    const db = getDB();
+    const result = await db.collection("users").updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { height, weight, bmi } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("updateBMIUser error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 };

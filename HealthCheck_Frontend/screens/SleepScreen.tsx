@@ -288,31 +288,44 @@ useEffect(() => {
     const newSessions = sleepSchedules
       .filter((s) => !s.isLocked)
       .map((s) => {
-        const bed = s.bedTime;
-        const wake = s.wakeTime;
+        // LẤY NGÀY HIỆN TẠI (ngày 29)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        // TẠO BẢN SAO
-        const bedCopy = new Date(bed);
-        const wakeCopy = new Date(wake);
+        const bed = new Date(s.bedTime);
+        const wake = new Date(s.wakeTime);
 
-        // TÍNH PHÚT TRONG NGÀY (LOCAL)
-        const bedMins = bedCopy.getHours() * 60 + bedCopy.getMinutes();
-        const wakeMins = wakeCopy.getHours() * 60 + wakeCopy.getMinutes();
+        const bedMins = bed.getHours() * 60 + bed.getMinutes();
+        const wakeMins = wake.getHours() * 60 + wake.getMinutes();
 
-        // NẾU wake < bed → QUA NGÀY → GIẢM NGÀY bedCopy -1
-        if (wakeMins < bedMins) {
+        let bedCopy = new Date(bed);
+        let wakeCopy = new Date(wake);
+
+        // XỬ LÝ NGỦ QUA ĐÊM
+        if (wakeMins <= bedMins) {
+          // bed thuộc ngày TRƯỚC → giảm 1 ngày
           bedCopy.setDate(bedCopy.getDate() - 1);
         }
 
+        // ĐẢM BẢO wakeCopy LUÔN LÀ NGÀY HIỆN TẠI (29)
+        const wakeYear = today.getFullYear();
+        const wakeMonth = today.getMonth();
+        const wakeDay = today.getDate();
+
+        wakeCopy = new Date(wakeYear, wakeMonth, wakeDay, wake.getHours(), wake.getMinutes());
+
+        const durationMin = Math.round((wakeCopy - bedCopy) / 60000);
+
         return {
-          sleepTime: formatVNTime(bedCopy),   // "2025-10-28 22:19"
-          wakeTime: formatVNTime(wakeCopy),   // "2025-10-29 03:20"
+          sleepTime: formatVNTime(bedCopy),
+          wakeTime: formatVNTime(wakeCopy),
+          durationMin,
         };
       });
 
     if (newSessions.length === 0) return;
 
-    console.log("Saving new sessions:", newSessions);
+    console.log("Saving sessions:", newSessions);
     await axios.post(`${API_URL}/healthdata/sleep/schedule/${userId}`, {
       sessions: newSessions,
     });
@@ -321,7 +334,7 @@ useEffect(() => {
       prev.map((s) => ({ ...s, isLocked: true }))
     );
   } catch (err) {
-    console.error("Error auto-saving sleep schedule:", err);
+    console.error("Error saving sleep:", err);
   }
 };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,73 +13,75 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import Svg, { Rect, Line, Text as TextSVG } from "react-native-svg";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
 
-const screenWidth = Dimensions.get("window").width;
+const { width } = Dimensions.get("window");
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 
 export default function BMIScreen() {
   const navigation = useNavigation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Fade-in effect cho toàn màn hình
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 700,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const latestBMI = 23.6;
-
-  // 🧮 Giả sử có 10 bản ghi gần nhất
-  const [bmiRecords, setBmiRecords] = useState<number[]>([
-     19.7, 21.0, 22.8, 23.6, 24.1, 25.3, 26.0, 28.2, 30.0,
-  ]);
-
-  const [labels, setLabels] = useState<string[]>([
-    "10/18",
-    "10/19",
-    "10/20",
-    "10/21",
-    "10/22",
-    "10/23",
-    "10/24",
-    "10/25",
-    "10/26",
-  ]);
-
-  const maxBMI = Math.max(...bmiRecords);
-  const minBMI = Math.min(...bmiRecords);
-  const avgBMI = (bmiRecords.reduce((a, b) => a + b, 0) / bmiRecords.length).toFixed(1);
-
-  // 🟩 Màu cột dựa theo mức độ BMI
-  const getBMIColor = (bmi: number) => {
-    if (bmi < 18.5) return "#60a5fa"; // xanh dương nhạt (gầy)
-    if (bmi < 25) return "#22c55e"; // xanh lá (bình thường)
-    if (bmi < 30) return "#facc15"; // vàng (thừa cân)
-    return "#ef4444"; // đỏ (béo phì)
-  };
-
-  // ===========================
-  // 🧩 FORM ADD NEW BMI RECORD
-  // ===========================
-  const [modalType, setModalType] = useState<"weight" | "height" | null>(null);
-  const [weight, setWeight] = useState<number | null>(null);
+  // State
+  const [latestBMI, setLatestBMI] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [height, setHeight] = useState<number | null>(null);
+  const [weight, setWeight] = useState<number | null>(null);
+  const [bmiRecords, setBmiRecords] = useState<number[]>([]);
+  const [labels, setLabels] = useState<string[]>([]);
+
+  const [modalType, setModalType] = useState<"weight" | "height" | null>(null);
   const [bmi, setBmi] = useState<number | null>(null);
   const [bmiStatus, setBmiStatus] = useState<string>("");
-
-  // Modal xác nhận lưu record
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
 
-  // Tính BMI và trạng thái dựa vào weight và height
+  // Fade-in
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }).start();
+  }, []);
+
+ useFocusEffect(
+  useCallback(() => {
+    const loadUser = async () => {
+      try {
+        const storedUser = await AsyncStorage.getItem("user");
+        if (!storedUser) return;
+
+        const user = JSON.parse(storedUser);
+        const uid = user._id?.$oid || user._id;
+        if (!uid || !/^[0-9a-fA-F]{24}$/.test(uid)) return;
+
+        setUserId(uid);
+
+        const bmiRes = await axios.get(`${API_URL}/users/bmi/${uid}`);
+        setLatestBMI(bmiRes.data.bmi ?? null);
+        setHeight(bmiRes.data.height ?? null);
+        setWeight(bmiRes.data.weight ?? null);
+
+        const historyRes = await axios.get(`${API_URL}/healthdata/bmi-history/${uid}`);
+        if (historyRes.data.success && historyRes.data.data.length > 0) {
+          setBmiRecords(historyRes.data.data.map((d: any) => d.bmi));
+          setLabels(historyRes.data.data.map((d: any) => {
+            const date = new Date(d.date);
+            return `${date.getMonth() + 1}/${date.getDate()}`;
+          }));
+        }
+      } catch (err: any) {
+        console.log("Load BMI error:", err.response?.data || err.message);
+      }
+    };
+    loadUser();
+  }, [])
+);
+
+  // Tính BMI khi thay đổi weight/height
   useEffect(() => {
     if (weight && height) {
-      const value = weight / (height / 100) ** 2;
+      const value = weight / ((height / 100) ** 2);
       setBmi(value);
-
       if (value < 18.5) setBmiStatus("Underweight");
       else if (value < 25) setBmiStatus("Normal");
       else if (value < 30) setBmiStatus("Overweight");
@@ -97,83 +99,78 @@ export default function BMIScreen() {
     { min: 30, max: 999, color: "#ef4444", label: "Obese", range: "≥30" },
   ];
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Underweight":
-        return "#60a5fa";
-      case "Normal":
-        return "#22c55e";
-      case "Overweight":
-        return "#facc15";
-      case "Obese":
-        return "#ef4444";
-      default:
-        return "#374151";
-    }
+  const getBMIColor = (bmi: number) => {
+    if (bmi < 18.5) return "#60a5fa";
+    if (bmi < 25) return "#22c55e";
+    if (bmi < 30) return "#facc15";
+    return "#ef4444";
   };
+
+  const getStatusColor = (status: string) => {
+    const map: any = { Underweight: "#60a5fa", Normal: "#22c55e", Overweight: "#facc15", Obese: "#ef4444" };
+    return map[status] || "#374151";
+  };
+
+  // Lưu BMI mới
+  const confirmSave = async () => {
+  if (!bmi || !userId || !height || !weight) return;
+  setConfirmModalVisible(false);
+
+  try {
+    // 1. CẬP NHẬT USERS
+    await axios.put(`${API_URL}/users/update-bmi/${userId}`, {
+      height,
+      weight,
+      bmi
+    });
+
+    // 2. LƯU VÀO HEALTHDATA
+    await axios.put(`${API_URL}/healthdata/bmi/${userId}`, {
+      height,
+      weight,
+      bmi
+    });
+
+    // 3. CẬP NHẬT LOCAL
+    const storedUser = await AsyncStorage.getItem("user");
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      user.height = height;
+      user.weight = weight;
+      user.bmi = bmi;
+      await AsyncStorage.setItem("user", JSON.stringify(user));
+    }
+
+    // 4. CẬP NHẬT GIAO DIỆN
+    setLatestBMI(bmi);
+    setBmiRecords(prev => [...prev.slice(-9), bmi]);
+    const today = new Date();
+    setLabels(prev => [...prev.slice(-9), `${today.getMonth() + 1}/${today.getDate()}`]);
+
+    Alert.alert("Success", "BMI saved!");
+    setWeight(null);
+    setHeight(null);
+  } catch (err: any) {
+    Alert.alert("Error", err.response?.data?.error || "Save failed");
+  }
+};
 
   const values = Array.from(
     { length: modalType === "weight" ? 121 : 81 },
     (_, i) => (modalType === "weight" ? i + 30 : i + 130)
   );
 
-  // 🔹 Hàm làm đậm màu cho viền highlight
-  const darkenColor = (hex: string, amount: number) => {
-    let col = hex.replace("#", "");
-    if (col.length === 3)
-      col = col.split("").map((c) => c + c).join("");
-    const num = parseInt(col, 16);
-    let r = Math.max(0, ((num >> 16) & 0xff) * (1 - amount));
-    let g = Math.max(0, ((num >> 8) & 0xff) * (1 - amount));
-    let b = Math.max(0, (num & 0xff) * (1 - amount));
-    return (
-      "#" +
-      ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b))
-        .toString(16)
-        .slice(1)
-    );
-  };
-
-  // 🔹 Xử lý lưu record BMI
-  const handleSaveRecord = () => {
-    if (!weight || !height) {
-      Alert.alert(
-        "Incomplete Data",
-        "Please select both weight and height before saving."
-      );
-      return;
-    }
-    setConfirmModalVisible(true);
-  };
-
-  // 🔹 Xác nhận lưu BMI mới và cập nhật biểu đồ
-  const confirmSave = () => {
-    setConfirmModalVisible(false);
-
-    if (bmi !== null) {
-      // Thêm bản ghi BMI mới vào cuối danh sách
-      setBmiRecords((prev) => [...prev, bmi]);
-      // Tạo nhãn mới, ví dụ tự động lấy ngày hôm nay
-      const today = new Date();
-      const newLabel = `${today.getMonth() + 1}/${today.getDate()}`;
-      setLabels((prev) => [...prev, newLabel]);
-
-      Alert.alert("Success", "BMI record has been saved!");
-      // Reset weight & height sau khi lưu
-      setWeight(null);
-      setHeight(null);
-    }
-  };
-
-  // ===========================
+  // Biểu đồ
+  const maxVal = Math.max(...(bmiRecords.length > 0 ? bmiRecords : [35]), 35);
+  const chartHeight = 200;
+  const baseY = 250;
+  const barWidth = 40;
+  const gap = 40;
+  const startX = 80;
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      {/* Header */}
-      <LinearGradient
-        colors={["#fde68a", "#facc15", "#eab308"]}
-        style={styles.header}
-      >
+      <LinearGradient colors={["#fde68a", "#facc15", "#eab308"]} style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back-outline" size={26} color="#fff" />
@@ -183,155 +180,68 @@ export default function BMIScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={{ paddingBottom: 80 }}>
         <View style={styles.content}>
           <Text style={styles.infoText}>
-            Your latest BMI record is{" "}
-            <Text style={styles.highlightText}>{latestBMI}</Text>
+            Your latest BMI is{" "}
+            <Text style={styles.highlightText}>
+              {latestBMI !== null ? latestBMI.toFixed(1) : "N/A"}
+            </Text>
           </Text>
 
-          {/* 📊 Biểu đồ BMI */}
+          {/* Biểu đồ */}
           <View style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>Last 10 BMI Records</Text>
-
-            <Text style={styles.statText}>
-              Max: <Text style={{ color: "#ef4444" }}>{maxBMI}</Text> | Min:{" "}
-              <Text style={{ color: "#60a5fa" }}>{minBMI}</Text> | Avg:{" "}
-              <Text style={{ color: "#22c55e" }}>{avgBMI}</Text>
-            </Text>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <Svg width={900} height={300}>
-                {(() => {
-                  const chartHeight = 200;
-                  const baseY = 250;
-                  const barWidth = 40;
-                  const gap = 40;
-                  const startX = 80;
-
-                  const maxVal = Math.max(...bmiRecords, 35);
-                  const yLabels = [0, 10, 20, 30, 40];
-
-                  return (
-                    <>
-                      {/* Vẽ các đường ngang và nhãn Y */}
-                      {yLabels.map((val) => {
-                        const y = baseY - (val / maxVal) * chartHeight;
-                        return (
-                          <React.Fragment key={val}>
-                            <TextSVG
-                              x={20}
-                              y={y + 4}
-                              fontSize="11"
-                              fill="#4b5563"
-                              textAnchor="start"
-                            >
-                              {val}
-                            </TextSVG>
-                            <Line
-                              x1={50}
-                              y1={y}
-                              x2={900}
-                              y2={y}
-                              stroke="#e5e7eb"
-                              strokeDasharray="4,4"
-                              strokeWidth={1}
-                            />
-                          </React.Fragment>
-                        );
-                      })}
-
-                      {/* Vẽ cột BMI */}
-                      {bmiRecords.map((val, i) => {
-                        const x = startX + i * (barWidth + gap);
-                        const h = (val / maxVal) * chartHeight;
-                        const y = baseY - h;
-                        return (
-                          <React.Fragment key={i}>
-                            <Rect
-                              x={x}
-                              y={y}
-                              width={barWidth}
-                              height={h}
-                              rx={barWidth / 2}
-                              fill={getBMIColor(val)}
-                            />
-                            <TextSVG
-                              x={x + barWidth / 2}
-                              y={y - 6}
-                              fontSize="12"
-                              fontWeight="bold"
-                              fill="#000"
-                              textAnchor="middle"
-                            >
-                              {val.toFixed(1)}
-                            </TextSVG>
-                            <TextSVG
-                              x={x + barWidth / 2}
-                              y={baseY + 18}
-                              fontSize="11"
-                              fill="#000"
-                              textAnchor="middle"
-                            >
-                              {labels[i]}
-                            </TextSVG>
-                          </React.Fragment>
-                        );
-                      })}
-                    </>
-                  );
-                })()}
-              </Svg>
-            </ScrollView>
+            <Text style={styles.chartTitle}>BMI History</Text>
+            {bmiRecords.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <Svg width={Math.max(900, bmiRecords.length * 80)} height={300}>
+                  {[0, 10, 20, 30, 40].map(val => {
+                    const y = baseY - (val / maxVal) * chartHeight;
+                    return (
+                      <React.Fragment key={val}>
+                        <TextSVG x={20} y={y + 4} fontSize="11" fill="#4b5563">{val}</TextSVG>
+                        <Line x1={50} y1={y} x2={900} y2={y} stroke="#e5e7eb" strokeDasharray="4,4" />
+                      </React.Fragment>
+                    );
+                  })}
+                  {bmiRecords.map((val, i) => {
+                    const x = startX + i * (barWidth + gap);
+                    const h = (val / maxVal) * chartHeight;
+                    const y = baseY - h;
+                    return (
+                      <React.Fragment key={i}>
+                        <Rect x={x} y={y} width={barWidth} height={h} rx={barWidth / 2} fill={getBMIColor(val)} />
+                        <TextSVG x={x + barWidth / 2} y={y - 6} fontSize="12" fontWeight="bold" fill="#000" textAnchor="middle">
+                          {val.toFixed(1)}
+                        </TextSVG>
+                        <TextSVG x={x + barWidth / 2} y={baseY + 18} fontSize="11" fill="#000" textAnchor="middle">
+                          {labels[i]}
+                        </TextSVG>
+                      </React.Fragment>
+                    );
+                  })}
+                </Svg>
+              </ScrollView>
+            ) : (
+              <Text style={styles.noDataText}>No BMI history yet</Text>
+            )}
           </View>
 
-          {/* 🧩 Add BMI Record Section */}
+          {/* Add Record */}
           <View style={styles.addSection}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 10,
-              }}
-            >
-              <Text style={styles.sectionTitle}>Add New BMI Record</Text>
-            </View>
-
+            <Text style={styles.sectionTitle}>Add New Record</Text>
             <View style={styles.selectorRow}>
-              <TouchableOpacity
-                style={[styles.selectorButton, styles.grayButton]}
-                onPress={() => setModalType("weight")}
-              >
-                <Text style={styles.grayText}>
-                  {weight ? `${weight} kg` : "Select Weight"}
-                </Text>
+              <TouchableOpacity style={[styles.selectorButton, styles.grayButton]} onPress={() => setModalType("weight")}>
+                <Text style={styles.grayText}>{weight ? `${weight} kg` : "Weight"}</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.selectorButton, styles.grayButton]}
-                onPress={() => setModalType("height")}
-              >
-                <Text style={styles.grayText}>
-                  {height ? `${height} cm` : "Select Height"}
-                </Text>
+              <TouchableOpacity style={[styles.selectorButton, styles.grayButton]} onPress={() => setModalType("height")}>
+                <Text style={styles.grayText}>{height ? `${height} cm` : "Height"}</Text>
               </TouchableOpacity>
             </View>
 
             {bmi && (
               <View style={{ alignItems: "center", marginTop: 15 }}>
-                <Text
-                  style={[
-                    styles.resultTitle,
-                    { color: getStatusColor(bmiStatus) },
-                  ]}
-                >
-                  {bmiStatus}
-                </Text>
+                <Text style={[styles.resultTitle, { color: getStatusColor(bmiStatus) }]}>{bmiStatus}</Text>
                 <Text style={styles.resultValue}>BMI: {bmi.toFixed(1)}</Text>
               </View>
             )}
@@ -345,13 +255,7 @@ export default function BMIScreen() {
                     style={[
                       styles.bmiCell,
                       { backgroundColor: r.color },
-                      active
-                        ? {
-                            borderWidth: 2,
-                            borderColor: darkenColor(r.color, 0.4),
-                            transform: [{ scale: 1.1 }],
-                          }
-                        : {},
+                      active ? { borderWidth: 2, borderColor: r.color, transform: [{ scale: 1.05 }] } : {},
                     ]}
                   >
                     <Text style={styles.bmiRangeText}>{r.range}</Text>
@@ -361,29 +265,22 @@ export default function BMIScreen() {
               })}
             </View>
 
-            {/* Nút Save Record */}
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveRecord}
-            >
+            <TouchableOpacity style={styles.saveButton} onPress={() => setConfirmModalVisible(true)} disabled={!bmi}>
               <MaterialIcons name="save" size={20} color="#fff" />
-              <Text style={styles.saveButtonText}>Save Record</Text>
+              <Text style={styles.saveButtonText}>Save BMI</Text>
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
 
-      {/* Modal chọn cân nặng / chiều cao */}
+      {/* Modal chọn */}
       <Modal visible={!!modalType} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>
-              Select {modalType === "weight" ? "Weight (kg)" : "Height (cm)"}
-            </Text>
+            <Text style={styles.modalTitle}>Select {modalType === "weight" ? "Weight (kg)" : "Height (cm)"}</Text>
             <FlatList
               data={values}
-              keyExtractor={(item) => item.toString()}
-              showsVerticalScrollIndicator={false}
+              keyExtractor={item => item.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.modalItem}
@@ -396,36 +293,25 @@ export default function BMIScreen() {
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setModalType(null)}
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setModalType(null)}>
               <Text style={styles.closeText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Modal xác nhận lưu record */}
+      {/* Confirm Modal */}
       <Modal visible={confirmModalVisible} transparent animationType="fade">
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmContainer}>
-            <Text style={styles.confirmTitle}>Confirm Save</Text>
-            <Text style={styles.confirmMessage}>
-              Are you sure you want to save this BMI record?
-            </Text>
+            <Text style={styles.confirmTitle}>Confirm</Text>
+            <Text style={styles.confirmMessage}>Save BMI: {bmi?.toFixed(1)}?</Text>
             <View style={styles.confirmButtons}>
-              <TouchableOpacity
-                style={[styles.confirmButton, { backgroundColor: "#ef4444" }]}
-                onPress={() => setConfirmModalVisible(false)}
-              >
+              <TouchableOpacity style={[styles.confirmButton, { backgroundColor: "#ef4444" }]} onPress={() => setConfirmModalVisible(false)}>
                 <Text style={styles.confirmButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmButton, { backgroundColor: "#22c55e" }]}
-                onPress={confirmSave}
-              >
-                <Text style={styles.confirmButtonText}>Confirm</Text>
+              <TouchableOpacity style={[styles.confirmButton, { backgroundColor: "#22c55e" }]} onPress={confirmSave}>
+                <Text style={styles.confirmButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -435,235 +321,48 @@ export default function BMIScreen() {
   );
 }
 
+// Styles giữ nguyên (đã đẹp)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-  },
-  headerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#fff",
-    textAlign: "center",
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: 20,
-    paddingHorizontal: 20,
-  },
-  infoText: {
-    fontSize: 20,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  highlightText: {
-    color: "#eab308",
-    fontWeight: "800",
-    fontSize: 22,
-  },
-  statText: {
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
-    marginBottom: 10,
-    color: "#374151",
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 6,
-    color: "#111827",
-  },
-  chartContainer: {
-    marginTop: 20,
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-    height: 380,
-  },
-  addSection: {
-    marginTop: 25,
-    backgroundColor: "#fff",
-    padding: 15,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 10,
-    color: "#111827",
-  },
-  selectorRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  selectorButton: {
-    flex: 1,
-    marginHorizontal: 5,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderWidth: 1,
-  },
+  header: { paddingTop: 60, paddingBottom: 30, paddingHorizontal: 20, borderBottomLeftRadius: 25, borderBottomRightRadius: 25 },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  headerTitle: { fontSize: 22, fontWeight: "700", color: "#fff" },
+  content: { paddingHorizontal: 20, paddingTop: 20 },
+  infoText: { fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 10 },
+  highlightText: { color: "#eab308", fontWeight: "800", fontSize: 22 },
+  chartContainer: { backgroundColor: "#fff", borderRadius: 20, padding: 15, marginTop: 20, elevation: 3 },
+  chartTitle: { fontSize: 18, fontWeight: "700", textAlign: "center", marginBottom: 10 },
+  noDataText: { textAlign: "center", color: "#6b7280", fontStyle: "italic" },
+  addSection: { backgroundColor: "#fff", padding: 15, borderRadius: 16, marginTop: 25, elevation: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", textAlign: "center", marginBottom: 10 },
+  selectorRow: { flexDirection: "row", justifyContent: "space-between" },
+  selectorButton: { flex: 1, marginHorizontal: 5, paddingVertical: 12, borderRadius: 8, backgroundColor: "#e5e7eb", alignItems: "center" },
+  grayText: { fontSize: 16, fontWeight: "600", color: "#111827" },
+  resultTitle: { fontSize: 18, fontWeight: "700" },
+  resultValue: { fontSize: 16, color: "#374151", marginTop: 4 },
+  bmiTable: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: 14 },
+  bmiCell: { width: "48%", paddingVertical: 10, borderRadius: 10, alignItems: "center", marginBottom: 8 },
+  bmiRangeText: { fontSize: 15, fontWeight: "700", color: "#111827" },
+  bmiLabelText: { fontSize: 14, color: "#111827" },
+  saveButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", backgroundColor: "#2563eb", paddingVertical: 12, borderRadius: 10, marginTop: 15 },
+  saveButtonText: { color: "#fff", fontWeight: "700", marginLeft: 6 },
+  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
+  modalContainer: { backgroundColor: "#fff", padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "70%" },
+  modalTitle: { fontSize: 18, fontWeight: "700", textAlign: "center", marginBottom: 10 },
+  modalItem: { paddingVertical: 12, alignItems: "center" },
+  modalText: { fontSize: 16, color: "#111827" },
+  closeButton: { backgroundColor: "#dcfce7", paddingVertical: 10, borderRadius: 8, marginTop: 10 },
+  closeText: { textAlign: "center", color: "#15803d", fontWeight: "600" },
+  confirmOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.4)" },
+  confirmContainer: { width: "80%", backgroundColor: "#fff", padding: 20, borderRadius: 16 },
+  confirmTitle: { fontSize: 20, fontWeight: "700", marginBottom: 10 },
+  confirmMessage: { fontSize: 16, textAlign: "center", marginBottom: 20, color: "#374151" },
+  confirmButtons: { flexDirection: "row", justifyContent: "space-between" },
+  confirmButton: { flex: 1, paddingVertical: 10, borderRadius: 10, marginHorizontal: 5 },
+  confirmButtonText: { color: "#fff", fontWeight: "700", textAlign: "center" },
   grayButton: {
-    backgroundColor: "#e5e7eb",
-    borderColor: "#9ca3af",
-  },
-  grayText: {
-    fontSize: 16,
-    color: "#111827",
-    fontWeight: "600",
-  },
-  resultTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#16a34a",
-  },
-  resultValue: {
-    fontSize: 16,
-    marginTop: 4,
-    color: "#374151",
-  },
-  bmiTable: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginTop: 14,
-  },
-  bmiCell: {
-    width: "48%",
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginBottom: 8,
-    alignItems: "center",
-  },
-  bmiRangeText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  bmiLabelText: {
-    fontSize: 14,
-    color: "#111827",
-  },
-  saveButton: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 15,
-    backgroundColor: "#2563eb",
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  saveButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    marginLeft: 6,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  modalContainer: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "70%",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  modalItem: {
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  modalText: {
-    fontSize: 16,
-    color: "#111827",
-  },
-  closeButton: {
-    backgroundColor: "#dcfce7",
-    borderRadius: 8,
-    paddingVertical: 10,
-    marginTop: 10,
-  },
-  closeText: {
-    textAlign: "center",
-    color: "#15803d",
-    fontWeight: "600",
-  },
-  confirmOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  confirmContainer: {
-    width: "80%",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-  },
-  confirmTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 10,
-    color: "#111827",
-  },
-  confirmMessage: {
-    fontSize: 16,
-    color: "#374151",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  confirmButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-  },
-  confirmButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginHorizontal: 5,
-  },
-  confirmButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    textAlign: "center",
-  },
+  backgroundColor: "#e5e7eb",
+  borderColor: "#9ca3af",
+  borderWidth: 1,
+},
 });
