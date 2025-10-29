@@ -154,7 +154,7 @@ export async function login(req, res) {
           totalProteinGrams: 0, totalProteinPercent: 0,
           totalCarbsGrams: 0, totalCarbsPercent: 0,
         },
-        water: { waterConsumed: 0 },
+        waterConsumed: 0,
         workout: { workDuration: 0, sessions: [] },
       });
 
@@ -293,3 +293,29 @@ export const updateWorkoutGoal = async (req, res) => {
   }
 };
 
+export const updateWaterGoal = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { waterGoal } = req.body; // ĐƠN VỊ: ml
+
+    if (!userId || waterGoal === undefined) {
+      return res.status(400).json({ message: "Missing userId or waterGoal" });
+    }
+
+    const db = getDB();
+    const result = await db.collection("user").updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { "health_goal.waterGoal": waterGoal } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log(`Updated water goal for user ${userId}: ${waterGoal} ml`);
+    res.json({ message: "Water goal updated!" });
+  } catch (err) {
+    console.error("updateWaterGoal error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};

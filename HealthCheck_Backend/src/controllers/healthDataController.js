@@ -183,27 +183,44 @@ export async function getTodayHealthData(req, res) {
     const { userId } = req.params;
     const db = getDB();
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    // DÙNG NGÀY VIỆT NAM (UTC+7) → ĐÚNG VỚI LOGIN
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
 
-    console.log("📅 Fetching health data for:", userId);
+    const vnYear = nowVN.getUTCFullYear();
+    const vnMonth = nowVN.getUTCMonth();
+    const vnDate = nowVN.getUTCDate();
+
+    const startOfDayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+
+    console.log("Fetching health data for user:", userId, "on VN date:", startOfDayUTC.toISOString());
 
     const record = await db.collection("healthdata").findOne({
-      userId: toObjectId(userId),
-      date: { $gte: startOfDay, $lte: endOfDay },
+      userId: new ObjectId(userId),
+      date: startOfDayUTC,
     });
 
     if (!record) {
-      console.log("📭 No record found for today");
-      return res.json({ success: true, exists: false });
+      console.log("No record found for today");
+      return res.json({ 
+        success: true, 
+        exists: false,
+        data: { waterConsumed: 0 } // ← ĐẢM BẢO CÓ TRƯỜNG NÀY
+      });
     }
 
-    console.log("✅ Found today's data:", record.steps);
-    res.json({ success: true, exists: true, data: record });
+    console.log("Found today's data - waterConsumed:", record.waterConsumed);
+    res.json({ 
+      success: true, 
+      exists: true, 
+      data: {
+        ...record,
+        waterConsumed: record.waterConsumed || 0
+      }
+    });
   } catch (err) {
-    console.error("❌ Error fetching today's health data:", err);
+    console.error("Error fetching today's health data:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 }
@@ -683,3 +700,102 @@ export const getWorkoutStats = async (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 };
+export const updateWaterConsumed = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { waterConsumed } = req.body;
+
+    if (!userId || waterConsumed === undefined) {
+      return res.status(400).json({ error: "Missing userId or waterConsumed" });
+    }
+
+    const db = getDB();
+
+    // TÌM BẢN GHI HÔM NAY (đã được tạo khi login)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // 00:00:00 local → nhưng Mongo lưu UTC
+
+    // Vì login đã tạo theo ngày VN → dùng cùng logic
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    const vnYear = nowVN.getUTCFullYear();
+    const vnMonth = nowVN.getUTCMonth();
+    const vnDate = nowVN.getUTCDate();
+    const startOfDayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+
+    const result = await db.collection("healthdata").updateOne(
+      {
+        userId: new ObjectId(userId),
+        date: startOfDayUTC,
+      },
+      {
+        $set: { waterConsumed: Number(waterConsumed) },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Health data not found for today" });
+    }
+
+    console.log(`Water updated: ${waterConsumed}ml for user ${userId}`);
+    res.json({ message: "Water consumption updated" });
+  } catch (err) {
+    console.error("updateWaterConsumed error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+export const getWaterStats = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    const db = getDB();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+
+    // LẤY NGÀY HIỆN TẠI THEO VIỆT NAM
+    const nowUTC = new Date();
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    const todayVN = new Date(Date.UTC(nowVN.getUTCFullYear(), nowVN.getUTCMonth(), nowVN.getUTCDate()));
+
+    const sevenDaysAgo = new Date(todayVN);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // 7 ngày
+
+    const records = await db.collection("healthdata")
+      .find({
+        userId: new ObjectId(userId),
+        date: { $gte: sevenDaysAgo, $lte: todayVN }
+      })
+      .sort({ date: 1 })
+      .toArray();
+
+    // TẠO MẢNG 7 NGÀY: 29 → 28 → ... → 23
+    const stats = [];
+    const labels = [];
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(todayVN);
+      date.setDate(date.getDate() - i);
+      const dayNum = date.getUTCDate(); // 29, 28, ...
+      const dateStr = date.toISOString().split("T")[0];
+
+      const record = records.find(r => 
+        new Date(r.date).toISOString().split("T")[0] === dateStr
+      );
+
+      stats.push(record?.waterConsumed || 0);
+      labels.push(dayNum.toString()); // "29", "28", ...
+    }
+
+    res.json({
+      success: true,
+      labels, // ["29", "28", ..., "23"]
+      data: stats
+    });
+  } catch (err) {
+    console.error("getWaterStats error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+
