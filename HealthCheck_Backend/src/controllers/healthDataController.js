@@ -237,37 +237,60 @@ export const updateSleepSchedule = async (req, res) => {
 
     const db = getDB();
 
-    // TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM (LÚC NGƯỜI DÙNG NHẬP)
-    const nowUTC = new Date();
-    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
-    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    // NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM
+    const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const year = nowVN.getUTCFullYear();
+    const month = nowVN.getUTCMonth();
+    const day = nowVN.getUTCDate();
 
-    const yearVN = nowVN.getUTCFullYear();
-    const monthVN = nowVN.getUTCMonth();
-    const dayVN = nowVN.getUTCDate();
+    const recordStart = new Date(Date.UTC(year, month, day));
+    const recordEnd = new Date(Date.UTC(year, month, day + 1));
 
-    const recordStart = new Date(Date.UTC(yearVN, monthVN, dayVN));
-    const recordEnd   = new Date(Date.UTC(yearVN, monthVN, dayVN + 1));
-
-    // TÌM BẢN GHI NGÀY HIỆN TẠI (ĐÃ ĐƯỢC TẠO KHI LOGIN)
     let healthRecord = await db.collection("healthdata").findOne({
       userId: new ObjectId(userId),
       date: { $gte: recordStart, $lt: recordEnd },
     });
 
     if (!healthRecord) {
-      return res.status(404).json({ message: "Health record not found for today" });
+      return res.status(404).json({ message: "Health record not found" });
     }
 
-    // GỘP TẤT CẢ SESSION → 1 LẦN UPDATE
+    // === HÀM PARSE GIỜ VIỆT NAM ===
+    const parseVNTime = (str) => {
+      const [datePart, timePart] = str.split(" ");
+      const [y, m, d] = datePart.split("-").map(Number);
+      const [h, min] = timePart.split(":").map(Number);
+      // Tạo Date theo giờ local (VN)
+      return new Date(y, m - 1, d, h, min);
+    };
+
+    // VALIDATE MỖI SESSION
     const validSessions = sessions
-      .map(s => {
-        const sleepDate = new Date(s.sleepTime);
-        const wakeDate  = new Date(s.wakeTime);
+      .map((s) => {
+        const sleepDate = parseVNTime(s.sleepTime);
+        const wakeDate = parseVNTime(s.wakeTime);
+
         if (isNaN(sleepDate) || isNaN(wakeDate)) return null;
 
         const durationMin = Math.round((wakeDate - sleepDate) / 60000);
-        return durationMin > 0 ? { ...s, durationMin } : null;
+        if (durationMin <= 0 || durationMin > 24 * 60) return null;
+
+        // CHỈ KIỂM TRA wakeDate TRONG NGÀY 29 (theo giờ VN)
+        const wakeVN = new Date(wakeDate.getTime() + 7 * 60 * 60 * 1000);
+        const wakeYear = wakeVN.getUTCFullYear();
+        const wakeMonth = wakeVN.getUTCMonth();
+        const wakeDay = wakeVN.getUTCDate();
+
+        if (wakeYear !== year || wakeMonth !== month || wakeDay !== day) {
+          console.log("Invalid wake day:", wakeVN);
+          return null;
+        }
+
+        return {
+          sleepTime: s.sleepTime,
+          wakeTime: s.wakeTime,
+          durationMin,
+        };
       })
       .filter(Boolean);
 
@@ -278,17 +301,21 @@ export const updateSleepSchedule = async (req, res) => {
     const totalDuration = validSessions.reduce((sum, s) => sum + s.durationMin, 0);
 
     await db.collection("healthdata").updateOne(
-      { _id: healthRecord._id }, // DÙNG _id → CHẮC CHẮN CẬP NHẬT
+      { _id: healthRecord._id },
       {
         $push: { "sleep.sessions": { $each: validSessions } },
-        $inc: {
+        $set: {
           "sleep.sleepDuration": totalDuration,
           "sleep.totalSleepHr": Math.round(totalDuration / 60),
         },
       }
     );
 
-    res.json({ message: "Sleep saved!" });
+    res.json({
+      message: "Sleep saved!",
+      totalSleepHr: Math.round(totalDuration / 60),
+      sessions: validSessions,
+    });
   } catch (err) {
     console.error("updateSleepSchedule error:", err);
     res.status(500).json({ message: "Server error" });
@@ -298,20 +325,15 @@ export const updateSleepSchedule = async (req, res) => {
 export const getTodaySleepSessions = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { date } = req.query;
-
     const db = getDB();
 
-    let start, end;
-    if (date) {
-      const d = new Date(date);
-      start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-      end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
-    } else {
-      const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
-      start = new Date(Date.UTC(nowVN.getUTCFullYear(), nowVN.getUTCMonth(), nowVN.getUTCDate()));
-      end = new Date(Date.UTC(nowVN.getUTCFullYear(), nowVN.getUTCMonth(), nowVN.getUTCDate() + 1));
-    }
+    const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const year = nowVN.getUTCFullYear();
+    const month = nowVN.getUTCMonth();
+    const day = nowVN.getUTCDate();
+
+    const start = new Date(Date.UTC(year, month, day));
+    const end = new Date(Date.UTC(year, month, day + 1));
 
     const record = await db.collection("healthdata").findOne({
       userId: new ObjectId(userId),
@@ -319,11 +341,15 @@ export const getTodaySleepSessions = async (req, res) => {
     });
 
     const sessions = (record?.sleep?.sessions || []).map(s => ({
-      sleepTime: s.sleepTime, // "2025-10-28 21:00"
-      wakeTime:  s.wakeTime,  // "2025-10-28 22:00"
+      sleepTime: s.sleepTime,
+      wakeTime: s.wakeTime,
+      durationMin: s.durationMin,
     }));
 
-    res.json({ sessions });
+    res.json({
+      sessions,
+      totalSleepHr: record?.sleep?.totalSleepHr || 0,
+    });
   } catch (err) {
     res.status(500).json({ message: "Error" });
   }
