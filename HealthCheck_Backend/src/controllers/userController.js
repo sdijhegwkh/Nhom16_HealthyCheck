@@ -103,83 +103,66 @@ export async function login(req, res) {
     const { email, password } = req.body;
     const db = getDB();
 
-    // 🔹 Tìm user theo email
     const user = await db.collection("user").findOne({ email });
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // 🔹 Kiểm tra mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // 🔹 Tạo JWT token (hết hạn sau 1h)
     const token = jwt.sign(
       { id: user._id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    // ✅ Tính ngày hôm nay theo múi giờ Việt Nam (UTC+7)
-    const now = new Date();
-    const vietnamOffset = 7 * 60 * 60 * 1000; // 7 tiếng
-    const vietnamDate = new Date(now.getTime() + vietnamOffset);
-    vietnamDate.setHours(0, 0, 0, 0);
-    console.log("Now:", now.toISOString());
-console.log("VietnamDate:", vietnamDate.toISOString());
+    // TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM (UTC+7) — ĐÚNG 100%
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
 
-    // 🔹 Kiểm tra xem healthdata hôm nay đã tồn tại chưa
+    // DÙNG getUTC* ĐỂ LẤY NGÀY VIỆT NAM
+    const vnYear = nowVN.getUTCFullYear();
+    const vnMonth = nowVN.getUTCMonth();
+    const vnDate = nowVN.getUTCDate();
+
+    // TẠO NGÀY 00:00:00 UTC CỦA NGÀY VIỆT NAM
+    const vietnamStartOfDay = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+
+    console.log("UTC Now:", nowUTC.toISOString());
+    console.log("VN Time:", nowVN.toISOString());
+    console.log("VN Start of Day (UTC):", vietnamStartOfDay.toISOString());
+
+    // KIỂM TRA healthdata CHO NGÀY VIỆT NAM
     const existing = await db.collection("healthdata").findOne({
       userId: new ObjectId(user._id),
-      date: vietnamDate,
+      date: vietnamStartOfDay,
     });
 
-    // 🔹 Nếu chưa có thì tạo mới healthdata mặc định
     if (!existing) {
       await db.collection("healthdata").insertOne({
         userId: new ObjectId(user._id),
-        date: vietnamDate,
+        date: vietnamStartOfDay, // ĐÚNG NGÀY VN
         healthScore: 0,
-        steps: {
-          stepCount: 0,
-          distanceKm: 0,
-          durationMin: 0,
-          burnedCalories: 0,
-        },
-        sleep: {
-          totalSleepHr: 0,
-          sessions: [],
-        },
+        steps: { stepCount: 0, distanceKm: 0, durationMin: 0, burnedCalories: 0 },
+        sleep: { totalSleepHr: 0, sessions: [] },
         nutrition: {
-          caloriesConsumed: 0,
-          totalFatGrams: 0,
-          totalFatPercent: 0,
-          totalProteinGrams: 0,
-          totalProteinPercent: 0,
-          totalCarbsGrams: 0,
-          totalCarbsPercent: 0,
+          caloriesConsumed: 0, totalFatGrams: 0, totalFatPercent: 0,
+          totalProteinGrams: 0, totalProteinPercent: 0,
+          totalCarbsGrams: 0, totalCarbsPercent: 0,
         },
-        water: {
-          waterConsumed: 0,
-        },
-        workout: {
-          workDuration: 0,
-          sessions: [],
-        },
+        water: { waterConsumed: 0 },
+        workout: { workDuration: 0, sessions: [] },
       });
 
-      console.log(
-        `✅ Created new healthdata for user ${user._id} (${email}) - Date: ${vietnamDate.toISOString()}`
-      );
+      console.log(`Created healthdata for ${email} - VN Date: ${vietnamStartOfDay.toISOString()}`);
     } else {
-      console.log(
-        `ℹ️ Healthdata already exists for user ${user._id} (${email}) - Date: ${vietnamDate.toISOString()}`
-      );
+      console.log(`Healthdata exists for ${email} - VN Date: ${vietnamStartOfDay.toISOString()}`);
     }
 
-    // ✅ Trả về thông tin user và token
     res.json({
       message: "Login successful",
       user: {
@@ -282,5 +265,31 @@ export async function getUserById(req, res) {
     res.status(500).json({ error: "Internal server error" });
   }
 }
+export const updateWorkoutGoal = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { workoutGoal } = req.body; // ĐƠN VỊ: PHÚT
 
+    if (!userId || workoutGoal === undefined) {
+      return res.status(400).json({ message: "Missing userId or workoutGoal" });
+    }
+
+    const db = getDB();
+
+    const result = await db.collection("user").updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { "health_goal.workoutGoal": workoutGoal } } // LƯU PHÚT
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log(`Updated workout goal for user ${userId}: ${workoutGoal} minutes`);
+    res.json({ message: "Workout goal updated!" });
+  } catch (err) {
+    console.error("updateWorkoutGoal error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 

@@ -51,6 +51,7 @@ export default function SleepScreen() {
   // === Chuyển Date → "2025-10-28 21:20" (giờ VN) ===
 const formatVNTime = (date: Date): string => {
   const pad = (n: number) => n.toString().padStart(2, "0");
+  // DÙNG LOCAL TIME → NGƯỜI DÙNG Ở VN → ĐÚNG NGÀY
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
@@ -59,7 +60,7 @@ const parseVNTime = (str: string): Date => {
   const [datePart, timePart] = str.split(" ");
   const [year, month, day] = datePart.split("-").map(Number);
   const [hour, minute] = timePart.split(":").map(Number);
-  return new Date(year, month - 1, day, hour, minute);
+  return new Date(year, month - 1, day, hour, minute); // Local time
 };
 
   // ========== EFFECTS ==========
@@ -281,32 +282,43 @@ useEffect(() => {
     } else setShowPicker(false);
   };
 
-  const saveSleepSchedule = async () => {
+ const saveSleepSchedule = async () => {
   if (!userId) return;
   try {
     const newSessions = sleepSchedules
       .filter((s) => !s.isLocked)
-      .map((s) => ({
-        sleepTime: formatVNTime(s.bedTime),   // "2025-10-28 21:00"
-        wakeTime: formatVNTime(s.wakeTime),   // "2025-10-28 22:00"
-      }));
+      .map((s) => {
+        const bed = s.bedTime;
+        const wake = s.wakeTime;
 
-    if (newSessions.length === 0) {
-      console.log("No new sleep sessions to save.");
-      return;
-    }
+        // TẠO BẢN SAO
+        const bedCopy = new Date(bed);
+        const wakeCopy = new Date(wake);
+
+        // TÍNH PHÚT TRONG NGÀY (LOCAL)
+        const bedMins = bedCopy.getHours() * 60 + bedCopy.getMinutes();
+        const wakeMins = wakeCopy.getHours() * 60 + wakeCopy.getMinutes();
+
+        // NẾU wake < bed → QUA NGÀY → GIẢM NGÀY bedCopy -1
+        if (wakeMins < bedMins) {
+          bedCopy.setDate(bedCopy.getDate() - 1);
+        }
+
+        return {
+          sleepTime: formatVNTime(bedCopy),   // "2025-10-28 22:19"
+          wakeTime: formatVNTime(wakeCopy),   // "2025-10-29 03:20"
+        };
+      });
+
+    if (newSessions.length === 0) return;
 
     console.log("Saving new sessions:", newSessions);
     await axios.post(`${API_URL}/healthdata/sleep/schedule/${userId}`, {
       sessions: newSessions,
     });
-    console.log("Auto-saved new sleep schedules");
 
     setSleepSchedules((prev) =>
-      prev.map((s) => ({
-        ...s,
-        isLocked: true,
-      }))
+      prev.map((s) => ({ ...s, isLocked: true }))
     );
   } catch (err) {
     console.error("Error auto-saving sleep schedule:", err);
