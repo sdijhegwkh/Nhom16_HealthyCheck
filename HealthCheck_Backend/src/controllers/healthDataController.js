@@ -823,5 +823,228 @@ export const getWaterStats = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+export const updateNutrition = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { session } = req.body;
+
+    if (!userId || !Array.isArray(session) || session.length === 0) {
+      return res.status(400).json({ error: "Missing userId or session data" });
+    }
+
+    const db = getDB();
+
+    // 🕐 Xác định ngày hiện tại theo múi giờ Việt Nam
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    const vnYear = nowVN.getUTCFullYear();
+    const vnMonth = nowVN.getUTCMonth();
+    const vnDate = nowVN.getUTCDate();
+    const startOfDayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+
+    // 🧩 Lấy dữ liệu hiện tại trong DB
+    const todayData = await db.collection("healthdata").findOne({
+      userId: new ObjectId(userId),
+      date: startOfDayUTC,
+    });
+
+    if (!todayData) {
+      return res.status(404).json({ error: "Health data not found for today" });
+    }
+
+    // 🧮 Gộp session cũ và mới
+    const existingSessions = todayData.nutrition?.session || [];
+    const mergedSessions = [...existingSessions, ...session];
+
+    // 🔢 Tính lại tổng nutrition từ toàn bộ session
+    const totalCalories = mergedSessions.reduce((sum, m) => sum + (m.kcal || 0), 0);
+    const totalFat = mergedSessions.reduce((sum, m) => sum + (m.fat || 0), 0);
+    const totalProtein = mergedSessions.reduce((sum, m) => sum + (m.protein || 0), 0);
+    const totalCarbs = mergedSessions.reduce((sum, m) => sum + (m.carbs || 0), 0);
+
+    // 📝 Cập nhật lại DB
+    const result = await db.collection("healthdata").updateOne(
+      { userId: new ObjectId(userId), date: startOfDayUTC },
+      {
+        $set: {
+          "nutrition.caloriesConsumed": totalCalories,
+          "nutrition.totalFatGrams": totalFat,
+          "nutrition.totalProteinGrams": totalProtein,
+          "nutrition.totalCarbsGrams": totalCarbs,
+          "nutrition.session": mergedSessions,
+        },
+      }
+    );
+
+    console.log(`🍱 Nutrition updated for user ${userId} with ${session.length} new meals`);
+    res.json({
+      success: true,
+      message: "Nutrition updated successfully",
+      totals: { totalCalories, totalFat, totalProtein, totalCarbs },
+    });
+  } catch (err) {
+    console.error("updateNutrition error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+
+
+export const getTodayNutrition = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId" });
+    }
+
+    const db = getDB();
+
+    // 🕐 Lấy ngày hôm nay (theo giờ VN)
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    const vnYear = nowVN.getUTCFullYear();
+    const vnMonth = nowVN.getUTCMonth();
+    const vnDate = nowVN.getUTCDate();
+    const startOfDayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+
+    // 🔹 Lấy dữ liệu dinh dưỡng hôm nay
+    const todayData = await db.collection("healthdata").findOne({
+      userId: new ObjectId(userId),
+      date: startOfDayUTC,
+    });
+
+    // 🔹 Lấy thông tin user (để biết caloriesGoal)
+    const userData = await db.collection("user").findOne({
+      _id: new ObjectId(userId),
+    });
+
+    if (!todayData || !userData) {
+      return res.status(404).json({ error: "No data found for today" });
+    }
+
+    // 🧩 Dữ liệu nutrition
+    const nutrition = todayData.nutrition || {
+      caloriesConsumed: 0,
+      totalFatGrams: 0,
+      totalProteinGrams: 0,
+      totalCarbsGrams: 0,
+      session: [],
+    };
+
+    // 🎯 Tính mục tiêu dinh dưỡng dựa theo kcal goal
+    const goalCalories = userData.health_goal?.caloriesGoal || 2000;
+
+    const fatGoal = Math.round((goalCalories * 0.3) / 9); // 30% từ fat
+    const proteinGoal = Math.round((goalCalories * 0.2) / 4); // 20% từ protein
+    const carbGoal = Math.round((goalCalories * 0.5) / 4); // 50% từ carbs
+
+    const nutritionGoal = {
+      calorieGoal: goalCalories,
+      fatGoal,
+      proteinGoal,
+      carbGoal,
+    };
+
+    res.json({
+      success: true,
+      nutrition,
+      nutritionGoal,
+    });
+  } catch (err) {
+    console.error("getTodayNutrition error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+export const getLast10DaysNutrition = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId || !ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, error: "Invalid userId" });
+    }
+
+    const db = getDB();
+
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+
+    const todayVN = new Date(Date.UTC(
+      nowVN.getUTCFullYear(),
+      nowVN.getUTCMonth(),
+      nowVN.getUTCDate()
+    ));
+
+    const startDate = new Date(todayVN);
+    startDate.setUTCDate(todayVN.getUTCDate() - 9);
+
+    const data = await db.collection("healthdata")
+      .find({
+        userId: new ObjectId(userId),
+        date: { $gte: startDate, $lte: todayVN }
+      })
+      .sort({ date: 1 })
+      .toArray();
+
+    const result = data.map(doc => ({
+      date: doc.date.toISOString().split("T")[0],
+      caloriesConsumed: doc.nutrition?.caloriesConsumed || 0
+    }));
+
+    // ĐẢM BẢO TRẢ VỀ { success: true, data: [...] }
+    res.json({ success: true, data: result });
+
+  } catch (err) {
+    console.error("getLast10DaysNutrition error:", err);
+    res.status(500).json({ success: false, error: "Server error" });
+  }
+};
+export const getMonthlyNutrition = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId || !ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, error: "Invalid userId" });
+    }
+
+    const db = getDB();
+
+    // Lấy tháng hiện tại (theo giờ VN)
+    const nowUTC = new Date();
+    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
+    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+
+    const year = nowVN.getUTCFullYear();
+    const month = nowVN.getUTCMonth();
+
+    const startOfMonth = new Date(Date.UTC(year, month, 1));
+    const endOfMonth = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+
+    // Query: Lấy toàn bộ dữ liệu trong tháng
+    const data = await db.collection("healthdata")
+      .find({
+        userId: new ObjectId(userId),
+        date: { $gte: startOfMonth, $lte: endOfMonth }
+      })
+      .sort({ date: 1 })
+      .toArray();
+
+    // Format
+    const result = data.map(doc => ({
+      date: doc.date.toISOString().split("T")[0],
+      caloriesConsumed: doc.nutrition?.caloriesConsumed || 0
+    }));
+
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (err) {
+    console.error("getMonthlyNutrition error:", err);
+    res.status(500).json({ success: false, error: "Server error" });
+  }
+};
+
 
 

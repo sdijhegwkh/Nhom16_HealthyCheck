@@ -172,9 +172,11 @@ export async function login(req, res) {
         steps: { stepCount: 0, distanceKm: 0, durationMin: 0, burnedCalories: 0 },
         sleep: { totalSleepHr: 0, sessions: [] },
         nutrition: {
-          caloriesConsumed: 0, totalFatGrams: 0, totalFatPercent: 0,
-          totalProteinGrams: 0, totalProteinPercent: 0,
-          totalCarbsGrams: 0, totalCarbsPercent: 0,
+          caloriesConsumed: 0, 
+          totalFatGrams: 0,
+          totalProteinGrams: 0,
+          totalCarbsGrams: 0,
+          session:[],
         },
         waterConsumed: 0,
         workout: { workDuration: 0, sessions: [] },
@@ -439,6 +441,34 @@ export const getBMIHistory = async (req, res) => {
     });
   } catch (err) {
     console.error("getBMIHistory error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+export const updateCaloriesGoal = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { caloriesGoal } = req.body;
+
+    if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
+      return res.status(400).json({ error: "Invalid user ID format" });
+    }
+
+    if (!caloriesGoal || isNaN(caloriesGoal)) {
+      return res.status(400).json({ error: "Invalid caloriesGoal" });
+    }
+
+    const db = getDB();
+    const result = await db.collection("user").updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { "health_goal.caloriesGoal": Number(caloriesGoal) } }
+    );
+
+    if (result.matchedCount === 0)
+      return res.status(404).json({ error: "User not found" });
+
+    res.json({ success: true, message: "Calories goal updated" });
+  } catch (err) {
+    console.error("updateCaloriesGoal error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
