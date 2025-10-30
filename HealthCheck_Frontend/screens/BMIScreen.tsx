@@ -48,34 +48,48 @@ export default function BMIScreen() {
     const loadUser = async () => {
       try {
         const storedUser = await AsyncStorage.getItem("user");
-        if (!storedUser) return;
+        if (!storedUser) {
+          console.warn("Không có user trong AsyncStorage");
+          return;
+        }
 
-        const user = JSON.parse(storedUser);
-        const uid = user._id?.$oid || user._id;
-        if (!uid || !/^[0-9a-fA-F]{24}$/.test(uid)) return;
+        const parsed = JSON.parse(storedUser);
+        const uid = parsed._id?.$oid || parsed._id || parsed.id;
+        if (!uid) {
+          console.warn("userId không hợp lệ:", parsed);
+          return;
+        }
 
+        console.log("✅ Resolved UID:", uid);
         setUserId(uid);
 
+        // Gọi API lấy BMI hiện tại
         const bmiRes = await axios.get(`${API_URL}/users/bmi/${uid}`);
+        console.log("BMI response:", bmiRes.data);
         setLatestBMI(bmiRes.data.bmi ?? null);
         setHeight(bmiRes.data.height ?? null);
         setWeight(bmiRes.data.weight ?? null);
 
-        const historyRes = await axios.get(`${API_URL}/healthdata/bmi-history/${uid}`);
+        // Gọi API lấy lịch sử BMI
+        const historyRes = await axios.get(`${API_URL}/users/bmi-history/${uid}`);
+        console.log("BMI history:", historyRes.data);
         if (historyRes.data.success && historyRes.data.data.length > 0) {
-          setBmiRecords(historyRes.data.data.map((d: any) => d.bmi));
-          setLabels(historyRes.data.data.map((d: any) => {
+          const records = historyRes.data.data;
+          setBmiRecords(records.map((d: any) => d.bmi));
+          setLabels(records.map((d: any) => {
             const date = new Date(d.date);
             return `${date.getMonth() + 1}/${date.getDate()}`;
           }));
         }
       } catch (err: any) {
-        console.log("Load BMI error:", err.response?.data || err.message);
+        console.error("Load BMI error:", err.response?.data || err.message);
       }
     };
+
     loadUser();
   }, [])
 );
+
 
   // Tính BMI khi thay đổi weight/height
   useEffect(() => {
@@ -123,14 +137,6 @@ export default function BMIScreen() {
       weight,
       bmi
     });
-
-    // 2. LƯU VÀO HEALTHDATA
-    await axios.put(`${API_URL}/healthdata/bmi/${userId}`, {
-      height,
-      weight,
-      bmi
-    });
-
     // 3. CẬP NHẬT LOCAL
     const storedUser = await AsyncStorage.getItem("user");
     if (storedUser) {

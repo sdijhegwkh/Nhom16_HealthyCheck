@@ -79,9 +79,8 @@ export default function WorkoutScreen() {
         } else {
           const response = await axios.get(`${API_URL}/users/${uid}`);
           const goalFromDB = response.data.health_goal?.workoutGoal || 3600;
-          const mins = Math.round(goalFromDB / 60);
-          setWorkoutGoal(mins);
-          setInputGoal(mins.toString());
+          setWorkoutGoal(goalFromDB);
+          setInputGoal(goalFromDB.toString());
         }
       } catch (err) {
         console.error("Load workout goal failed:", err);
