@@ -16,7 +16,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import * as Progress from "react-native-progress";
 import { Svg, Rect, Line, Text as TextSVG } from "react-native-svg";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+import { Alert } from "react-native";
 const screenWidth = Dimensions.get("window").width;
 
 export default function NutritionScreen() {
@@ -34,18 +36,30 @@ export default function NutritionScreen() {
   }
 
   // --- State chính ---
-  const [goalCalories, setGoalCalories] = useState(2000); // mục tiêu kcal trong ngày
+  const [goalCalories, setGoalCalories] = useState(0); // mục tiêu kcal trong ngày
   const [consumedCalories, setConsumedCalories] = useState(0); // tổng kcal đã ăn
   const [fat, setFat] = useState(0);
   const [protein, setProtein] = useState(0);
   const [carbs, setCarbs] = useState(0);
+  const [totalFat, setTotalFat] = useState(0);
+  const [totalProtein, setTotalProtein] = useState(0);
+  const [totalCarbs, setTotalCarbs] = useState(0);
 
   const [modalVisible, setModalVisible] = useState(false); // mở/đóng modal chọn món ăn
   const [selectedMeals, setSelectedMeals] = useState<Meal[]>([]); // danh sách món đang chọn
   const [addedMeals, setAddedMeals] = useState<Meal[]>([]); // danh sách món đã thêm xong
+  const [dbMeals, setDbMeals] = useState<Meal[]>([]);
 
   const [showStats, setShowStats] = useState(false);
   const [activeTab, setActiveTab] = useState<"daily" | "monthly">("daily");
+  const [dailyStats, setDailyStats] = useState<
+    { date: string; kcal: number }[]
+  >([]);
+  const [monthlyStats, setMonthlyStats] = useState<
+    { range: string; kcal: number }[]
+  >([]);
+
+  const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 
   // Hiệu ứng mờ dần khi vào màn hình
   useEffect(() => {
@@ -57,9 +71,9 @@ export default function NutritionScreen() {
   }, []);
 
   // --- Tính toán mục tiêu theo macro ---
-  const fatGoal = Math.round((goalCalories * 0.3) / 9); // 30% năng lượng từ fat
-  const proteinGoal = Math.round((goalCalories * 0.3) / 4); // 30% từ protein
-  const carbGoal = Math.round((goalCalories * 0.4) / 4); // 40% từ carbs
+  const fatGoal = Math.round((goalCalories * 0.3) / 9); // 30% kcal từ fat
+  const proteinGoal = Math.round((goalCalories * 0.2) / 4); // 20% kcal từ protein
+  const carbGoal = Math.round((goalCalories * 0.5) / 4); // 50% kcal từ carbs
 
   // Tính phần trăm đã đạt so với mục tiêu
   const fatPercent = fatGoal > 0 ? fat / fatGoal : 0;
@@ -104,22 +118,22 @@ export default function NutritionScreen() {
 
   // --- Danh sách món ăn mẫu ---
   const foodList = [
-    { name: "Cơm tấm sườn bì chả", fat: 20, protein: 25, carbs: 55, kcal: 520 },
-    { name: "Phở bò", fat: 8, protein: 28, carbs: 45, kcal: 380 },
-    { name: "Bún chả", fat: 15, protein: 24, carbs: 40, kcal: 420 },
-    { name: "Bánh mì trứng", fat: 10, protein: 13, carbs: 35, kcal: 300 },
-    { name: "Bánh cuốn", fat: 6, protein: 10, carbs: 40, kcal: 260 },
-    { name: "Xôi gà", fat: 14, protein: 20, carbs: 50, kcal: 430 },
+    { name: "Cơm tấm sườn bì chả", fat: 20, protein: 25, carbs: 55, kcal: 545 },
+    { name: "Phở bò", fat: 8, protein: 28, carbs: 45, kcal: 404 },
+    { name: "Bún chả", fat: 15, protein: 24, carbs: 40, kcal: 451 },
+    { name: "Bánh mì trứng", fat: 10, protein: 13, carbs: 35, kcal: 327 },
+    { name: "Bánh cuốn", fat: 6, protein: 10, carbs: 40, kcal: 274 },
+    { name: "Xôi gà", fat: 14, protein: 20, carbs: 50, kcal: 456 },
     {
-      name: "Cơm chiên dương châu",
+      name: "Cơm chiên Dương Châu",
       fat: 18,
       protein: 22,
       carbs: 60,
-      kcal: 500,
+      kcal: 514,
     },
-    { name: "Mì xào bò", fat: 16, protein: 26, carbs: 55, kcal: 480 },
-    { name: "Cháo gà", fat: 5, protein: 18, carbs: 30, kcal: 250 },
-    { name: "Bánh xèo", fat: 18, protein: 14, carbs: 35, kcal: 410 },
+    { name: "Mì xào bò", fat: 16, protein: 26, carbs: 55, kcal: 510 },
+    { name: "Cháo gà", fat: 5, protein: 18, carbs: 30, kcal: 257 },
+    { name: "Bánh xèo", fat: 18, protein: 14, carbs: 35, kcal: 433 },
   ];
 
   /**
@@ -128,6 +142,49 @@ export default function NutritionScreen() {
    * - Nếu món đã có trong selectedMeals → bỏ chọn
    * - Nếu chưa có → thêm vào danh sách selectedMeals (với quantity = 1)
    */
+
+  // 🧠 Lưu dữ liệu dinh dưỡng khi người dùng thoát màn hình hoặc thêm món mới
+  useEffect(() => {
+    const saveNutritionData = async () => {
+      try {
+        const userData = await AsyncStorage.getItem("user");
+        if (!userData) return;
+        const parsed = JSON.parse(userData);
+        const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
+        if (!userId) return;
+
+        // Tạo session từ danh sách món đã thêm
+        const session = addedMeals.map((m) => ({
+          mealName: m.name,
+          quantity: m.quantity,
+          carbs: m.carbs * m.quantity,
+          fat: m.fat * m.quantity,
+          protein: m.protein * m.quantity,
+          kcal: m.kcal * m.quantity,
+        }));
+
+        await fetch(`${API_URL}/healthdata/update-nutrition/${userId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            caloriesConsumed: consumedCalories,
+            totalFatGrams: fat,
+            totalProteinGrams: protein,
+            totalCarbsGrams: carbs,
+            session,
+          }),
+        });
+
+        console.log("✅ Nutrition data saved successfully");
+      } catch (err) {
+        console.error("❌ Failed to save nutrition data:", err);
+      }
+    };
+    // Khi người dùng rời khỏi màn hình → gọi saveNutritionData
+    const unsubscribe = navigation.addListener("blur", saveNutritionData);
+    return unsubscribe;
+  }, [addedMeals, consumedCalories, fat, protein, carbs]);
+
   const toggleSelectMeal = (meal) => {
     const exists = selectedMeals.find((m) => m.name === meal.name);
     if (exists) {
@@ -138,6 +195,146 @@ export default function NutritionScreen() {
       setSelectedMeals([...selectedMeals, { ...meal, quantity: 1 }]);
     }
   };
+  useEffect(() => {
+    const loadNutrition = async () => {
+      try {
+        const userData = await AsyncStorage.getItem("user");
+        if (!userData) return Alert.alert("Error", "User not found");
+
+        const parsed = JSON.parse(userData);
+        const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
+        if (!userId) return Alert.alert("Error", "User ID not found");
+
+        // 1️⃣ Fetch nutrition data
+        const resNutrition = await fetch(
+          `${API_URL}/healthdata/nutrition/${userId}`
+        );
+        if (!resNutrition.ok)
+          throw new Error(`Network error: ${resNutrition.status}`);
+        const dataNutrition = await resNutrition.json();
+
+        if (dataNutrition.success) {
+          const n = dataNutrition.nutrition;
+          setConsumedCalories(n.caloriesConsumed || 0);
+          setFat(n.totalFatGrams || 0);
+          setProtein(n.totalProteinGrams || 0);
+          setCarbs(n.totalCarbsGrams || 0);
+
+          if (n.session && Array.isArray(n.session)) {
+            setDbMeals(
+              n.session.map((m) => ({
+                name: m.mealName,
+                fat: m.fat / m.quantity,
+                protein: m.protein / m.quantity,
+                carbs: m.carbs / m.quantity,
+                kcal: m.kcal / m.quantity,
+                quantity: m.quantity,
+              }))
+            );
+          }
+        }
+
+        // 2️⃣ Fetch latest user info từ backend để lấy goal mới
+        const resUser = await fetch(`${API_URL}/users/${userId}`);
+        if (!resUser.ok) throw new Error(`Network error: ${resUser.status}`);
+        const dataUser = await resUser.json();
+
+        const goal = dataUser?.health_goal?.caloriesGoal || 0;
+        console.log("Nutrition goal from backend:", goal);
+        setGoalCalories(goal);
+      } catch (err) {
+        console.error("Load nutrition error:", err);
+        Alert.alert("Error", "Could not load nutrition data");
+      }
+    };
+
+    loadNutrition();
+  }, []);
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const userData = await AsyncStorage.getItem("user");
+        if (!userData) return;
+
+        const parsed = JSON.parse(userData);
+        const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
+        if (!userId) return;
+
+        // === DAILY: 10 ngày gần nhất ===
+        // === DAILY: 10 ngày gần nhất ===
+        const resDaily = await fetch(
+          `${API_URL}/healthdata/last-10-days/${userId}`
+        );
+        if (!resDaily.ok) throw new Error("Network error daily stats");
+        const dailyResponse = await resDaily.json();
+
+        // ĐẢM BẢO DÙNG dailyResponse.data
+        const dailyData = dailyResponse.success ? dailyResponse.data : [];
+
+        const today = new Date();
+        const last10Days: { date: string; kcal: number }[] = [];
+        for (let i = 9; i >= 0; i--) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const dayNum = d.getDate();
+          const isoDate = d.toISOString().split("T")[0];
+          const record = dailyData.find((r: any) => r.date === isoDate);
+          const label = i === 0 ? `${dayNum} (Today)` : `${dayNum}`;
+          last10Days.push({
+            date: label,
+            kcal: record ? record.caloriesConsumed : 0,
+          });
+        }
+        setDailyStats(last10Days.reverse());
+
+        // === MONTHLY: Trung bình kcal/ngày theo nhóm 5 ngày ===
+        const resMonthly = await fetch(
+          `${API_URL}/healthdata/monthly/${userId}`
+        );
+        if (!resMonthly.ok) throw new Error("Network error monthly stats");
+        const monthlyResponse = await resMonthly.json();
+        const monthlyData = monthlyResponse.success ? monthlyResponse.data : [];
+
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        const daysInMonth = new Date(
+          currentYear,
+          currentMonth + 1,
+          0
+        ).getDate();
+
+        const monthlyArray: { range: string; kcal: number }[] = [];
+        for (let start = 1; start <= daysInMonth; start += 5) {
+          const end = Math.min(start + 4, daysInMonth);
+
+          const daysInRange = monthlyData.filter((r: any) => {
+            const d = new Date(r.date);
+            return (
+              d.getMonth() === currentMonth &&
+              d.getDate() >= start &&
+              d.getDate() <= end
+            );
+          });
+
+          const totalKcal = daysInRange.reduce(
+            (sum: number, r: any) => sum + r.caloriesConsumed,
+            0
+          );
+          const validDays = daysInRange.filter(
+            (r: any) => r.caloriesConsumed > 0
+          ).length;
+          const avgKcal = validDays > 0 ? Math.round(totalKcal / validDays) : 0;
+
+          monthlyArray.push({ range: `${start}-${end}`, kcal: avgKcal });
+        }
+        setMonthlyStats(monthlyArray);
+      } catch (err) {
+        console.error("Load stats error:", err);
+      }
+    };
+
+    loadStats();
+  }, []);
 
   /**
    * 🔢 updateQuantity(mealName, qty)
@@ -296,6 +493,52 @@ export default function NutritionScreen() {
             />
             <Text style={styles.goalUnit}>kcal</Text>
           </View>
+          <TouchableOpacity
+            style={styles.saveGoalButton}
+            onPress={async () => {
+              try {
+                const userData = await AsyncStorage.getItem("user");
+                if (!userData) {
+                  return Alert.alert("Error", "No user data found");
+                }
+
+                const parsed = JSON.parse(userData);
+                const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
+                if (!userId) {
+                  return Alert.alert("Error", "User ID not found");
+                }
+
+                const res = await fetch(
+                  `${API_URL}/users/update-calories-goal/${userId}`,
+                  {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ caloriesGoal: goalCalories }),
+                  }
+                );
+
+                if (!res.ok) {
+                  console.error("⚠️ Network error:", res.status);
+                  return Alert.alert("Error", `Server returned ${res.status}`);
+                }
+
+                const data = await res.json();
+                if (data.success) {
+                  Alert.alert("✅ Saved", "Calorie goal updated successfully!");
+                } else {
+                  Alert.alert("⚠️ Failed", data.error || "Unknown error");
+                }
+              } catch (err) {
+                console.error("❌ Save goal error:", err);
+                Alert.alert(
+                  "Error",
+                  "Network request failed or server unreachable"
+                );
+              }
+            }}
+          >
+            <Text style={styles.saveGoalText}>💾 Save Goal</Text>
+          </TouchableOpacity>
 
           {/* Thông tin dinh dưỡng */}
           <View style={styles.statsContainer}>
@@ -308,28 +551,63 @@ export default function NutritionScreen() {
                       style={[styles.dot, { backgroundColor: item.color }]}
                     />
                     <Text style={styles.statText}>{item.name}</Text>
-                    <Text style={styles.statValue}>
-                      {item.grams}/{item.goal}g
-                    </Text>
                     <Text style={[styles.statPercent, { color: status.color }]}>
                       {Math.round(item.percent * 100)}% ({status.text})
                     </Text>
                   </View>
-                  <Progress.Bar
-                    progress={item.percent}
-                    color={item.color}
-                    unfilledColor="#e5e7eb"
-                    borderWidth={0}
-                    width={null}
-                    height={8}
-                    borderRadius={5}
-                  />
+
+                  {/* Thanh progress + giá trị bên phải */}
+                  <View style={styles.progressRow}>
+                    <Progress.Bar
+                      progress={item.percent}
+                      color={item.color}
+                      unfilledColor="#e5e7eb"
+                      borderWidth={0}
+                      width={screenWidth * 0.65} // 65% chiều rộng màn hình
+                      height={10}
+                      borderRadius={6}
+                    />
+                    <Text style={styles.goalValueText}>
+                      {item.grams}/{item.goal}g
+                    </Text>
+                  </View>
                 </View>
               );
             })}
           </View>
 
           {/* Danh sách món đã thêm */}
+          {/* Meals từ DB */}
+          {dbMeals.length > 0 && (
+            <View style={styles.addedMealsContainer}>
+              <Text style={styles.addedTitle}>Meals from Database</Text>
+              {dbMeals.map((m, i) => (
+                <View key={i} style={styles.addedMealCard}>
+                  <View style={styles.addedMealLeft}>
+                    <Ionicons
+                      name="restaurant-outline"
+                      size={22}
+                      color="#16a34a"
+                    />
+                    <View style={{ marginLeft: 10 }}>
+                      <Text style={styles.addedMealName}>{m.name}</Text>
+                      <Text style={styles.addedMealSub}>
+                        {m.kcal * m.quantity} kcal • Fat {m.fat * m.quantity}g •
+                        Protein {m.protein * m.quantity}g • Carbs{" "}
+                        {m.carbs * m.quantity}g
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.addedMealRight}>
+                    <Text style={styles.addedMealQtyText}>×{m.quantity}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Meals do user thêm */}
+          {/* Meals do user thêm */}
           {addedMeals.length > 0 && (
             <View style={styles.addedMealsContainer}>
               <Text style={styles.addedTitle}>Added Meals</Text>
@@ -345,12 +623,11 @@ export default function NutritionScreen() {
                       <Text style={styles.addedMealName}>{m.name}</Text>
                       <Text style={styles.addedMealSub}>
                         {m.kcal * m.quantity} kcal • Fat {m.fat * m.quantity}g •
-                        Protein {m.protein * m.quantity}g
+                        Protein {m.protein * m.quantity}g • Carbs{" "}
+                        {m.carbs * m.quantity}g
                       </Text>
                     </View>
                   </View>
-
-                  {/* Hiển thị số lượng + nút xóa */}
                   <View style={styles.addedMealRight}>
                     <Text style={styles.addedMealQtyText}>×{m.quantity}</Text>
                     <TouchableOpacity
@@ -551,86 +828,53 @@ export default function NutritionScreen() {
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <Svg width={activeTab === "daily" ? 900 : 1200} height={300}>
+              <Svg width={activeTab === "daily" ? 950 : 1200} height={300}>
                 {(() => {
-                  const goal = 2000;
+                  const goal = goalCalories || 2000;
                   const chartHeight = 220;
                   const baseY = 260;
                   const barWidth = 40;
-                  const gap = 40;
+                  const gap = activeTab === "daily" ? 50 : 70;
                   const startX = 80;
 
-                  let days: string[] = [];
+                  let labels: string[] = [];
                   let values: number[] = [];
 
                   if (activeTab === "daily") {
-                    // Dữ liệu 10 ngày gần nhất
-                    days = [
-                      "10/17",
-                      "10/18",
-                      "10/19",
-                      "10/20",
-                      "10/21",
-                      "10/22",
-                      "10/23",
-                      "10/24",
-                      "10/25",
-                      "10/26",
-                    ];
-                    values = [
-                      1800, 2100, 1500, 2200, 2000, 1700, 2500, 1900, 2300,
-                      1850,
-                    ];
+                    labels = dailyStats.map((d) => d.date);
+                    values = dailyStats.map((d) => d.kcal);
                   } else {
-                    // 🧮 Dữ liệu theo tháng (sửa thành kcal trung bình/ngày)
-                    const monthlyData = [
-                      { month: "Jan", total: 48000, days: 31 },
-                      { month: "Feb", total: 52000, days: 29 },
-                      { month: "Mar", total: 47000, days: 31 },
-                      { month: "Apr", total: 56000, days: 30 },
-                      { month: "May", total: 53000, days: 31 },
-                      { month: "Jun", total: 59000, days: 30 },
-                      { month: "Jul", total: 61000, days: 31 },
-                      { month: "Aug", total: 58000, days: 31 },
-                      { month: "Sep", total: 60000, days: 30 },
-                      { month: "Oct", total: 55000, days: 31 },
-                    ];
-                    days = monthlyData.map((m) => m.month);
-                    values = monthlyData.map((m) =>
-                      Math.round(m.total / m.days)
-                    ); // ✅ kcal trung bình/ngày
+                    labels = monthlyStats.map((m) => m.range);
+                    values = monthlyStats.map((m) => m.kcal);
                   }
 
-                  const maxVal = Math.max(...values, goal) * 1.1;
+                  const maxVal = Math.max(...values, goal, 100) * 1.15;
                   const goalY = baseY - (goal / maxVal) * chartHeight;
-                  const yLabels = [
-                    0,
-                    Math.round(maxVal / 4),
-                    Math.round((maxVal / 4) * 2),
-                    Math.round((maxVal / 4) * 3),
-                    Math.round(maxVal),
-                  ];
+
+                  const yLabelCount = 5;
+                  const yLabels = Array.from({ length: yLabelCount }, (_, i) =>
+                    Math.round((maxVal / (yLabelCount - 1)) * i)
+                  );
 
                   return (
                     <>
-                      {/* Trục Y */}
+                      {/* Trục Y + lưới ngang */}
                       {yLabels.map((val) => {
                         const y = baseY - (val / maxVal) * chartHeight;
                         return (
                           <React.Fragment key={val}>
                             <TextSVG
-                              x={20}
+                              x={30}
                               y={y + 4}
                               fontSize="11"
                               fill="#4b5563"
-                              textAnchor="start"
                             >
                               {val}
                             </TextSVG>
                             <Line
-                              x1={50}
+                              x1={60}
                               y1={y}
-                              x2={1200}
+                              x2={activeTab === "daily" ? 950 : 1250}
                               y2={y}
                               stroke="#e5e7eb"
                               strokeDasharray="4,4"
@@ -640,23 +884,24 @@ export default function NutritionScreen() {
                         );
                       })}
 
-                      {/* Mức mục tiêu */}
+                      {/* Đường mục tiêu */}
                       <Line
-                        x1={50}
+                        x1={60}
                         y1={goalY}
-                        x2={1200}
+                        x2={activeTab === "daily" ? 850 : 1150}
                         y2={goalY}
                         stroke="#94a3b8"
                         strokeDasharray="6,4"
                         strokeWidth={2}
                       />
                       <TextSVG
-                        x={-5}
+                        x={48}
                         y={goalY + 5}
-                        fontSize="20"
+                        fontSize="14"
                         fill="#22c55e"
+                        fontWeight="bold"
                       >
-                        🏅
+                        Goal
                       </TextSVG>
 
                       {/* Cột dữ liệu */}
@@ -665,34 +910,38 @@ export default function NutritionScreen() {
                         const h = (val / maxVal) * chartHeight;
                         const y = baseY - h;
                         const reachedGoal = val >= goal;
+
                         return (
                           <React.Fragment key={i}>
                             <Rect
                               x={x}
                               y={y}
                               width={barWidth}
-                              height={h}
-                              rx={barWidth / 2}
+                              height={h || 1}
+                              rx={6}
                               fill={reachedGoal ? "#16a34a" : "#86efac"}
                             />
-                            <TextSVG
-                              x={x + barWidth / 2}
-                              y={y - 6}
-                              fontSize="12"
-                              fontWeight="bold"
-                              fill="#000"
-                              textAnchor="middle"
-                            >
-                              {val}
-                            </TextSVG>
+                            {val > 0 && (
+                              <TextSVG
+                                x={x + barWidth / 2}
+                                y={y - 6}
+                                fontSize="12"
+                                fontWeight="bold"
+                                fill="#000"
+                                textAnchor="middle"
+                              >
+                                {val}
+                              </TextSVG>
+                            )}
                             <TextSVG
                               x={x + barWidth / 2}
                               y={baseY + 18}
                               fontSize="11"
-                              fill="#000"
+                              fill="#374151"
                               textAnchor="middle"
+                              fontWeight="600"
                             >
-                              {days[i]}
+                              {labels[i]}
                             </TextSVG>
                           </React.Fragment>
                         );
@@ -991,4 +1240,30 @@ const styles = StyleSheet.create({
   tabButtonActive: { backgroundColor: "#22c55e" },
   tabText: { color: "#374151", fontWeight: "600" },
   tabTextActive: { color: "#fff", fontWeight: "700" },
+  saveGoalButton: {
+    backgroundColor: "#22c55e",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginTop: 10,
+  },
+  saveGoalText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  goalValueText: {
+    width: 70,
+    textAlign: "right",
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
 });

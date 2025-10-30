@@ -1,11 +1,12 @@
 // src/routes/userRoutes.js
 import express from "express";
-import { createUser,signUp,login, updateStepsGoal, updateSleepGoal, getUserById , updateWorkoutGoal, updateWaterGoal, getCurrentBMI, updateBMIUser, getBMIHistory} from "../controllers/userController.js";
+import { createUser,signUp,login, updateStepsGoal, updateSleepGoal, getUserById , updateWorkoutGoal, updateWaterGoal, getCurrentBMI, updateBMIUser, getBMIHistory, updateCaloriesGoal} from "../controllers/userController.js";
 
 const router = express.Router();
 router.get("/bmi/:userId", getCurrentBMI);
 router.put("/update-bmi/:userId", updateBMIUser);
 router.get("/bmi-history/:userId", getBMIHistory);
+router.put("/update-calories-goal/:userId", updateCaloriesGoal);
 router.post("/", createUser);  // createuser
 router.post("/signup", signUp); //login
 router.post("/login", login); //signup
