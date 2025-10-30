@@ -345,27 +345,31 @@ export const updateWaterGoal = async (req, res) => {
 export const getCurrentBMI = async (req, res) => {
   try {
     const { userId } = req.params;
-
-    // Kiểm tra ID hợp lệ
     if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
       return res.status(400).json({ error: "Invalid user ID format" });
     }
 
     const db = getDB();
-    const user = await db.collection("users").findOne(
+    const user = await db.collection("user").findOne(
       { _id: new ObjectId(userId) },
-      { projection: { bmi: 1, height: 1, weight: 1 } }
+      { projection: { bodyStatsHistory: 1 } }
     );
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const history = user.bodyStatsHistory || [];
+    if (history.length === 0)
+      return res.json({ success: true, bmi: null, height: null, weight: null });
+    // Lấy bản ghi có ngày mới nhất
+    const latest = history.reduce((a, b) =>
+      new Date(a.date) > new Date(b.date) ? a : b
+    );
 
     res.json({
       success: true,
-      bmi: user.bmi ?? null,
-      height: user.height ?? null,
-      weight: user.weight ?? null,
+      bmi: latest.bmi ?? null,
+      height: latest.height ?? null,
+      weight: latest.weight ?? null,
     });
   } catch (err) {
     console.error("getCurrentBMI error:", err);
@@ -376,24 +380,65 @@ export const updateBMIUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const { height, weight, bmi } = req.body;
-
     if (!height || !weight || !bmi) {
       return res.status(400).json({ error: "Missing data" });
     }
 
     const db = getDB();
-    const result = await db.collection("users").updateOne(
+    const newRecord = {
+      date: new Date().toISOString().split("T")[0],
+      height,
+      weight,
+      bmi,
+    };
+
+    const result = await db.collection("user").updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { height, weight, bmi } }
+      { $push: { bodyStatsHistory: newRecord } }
     );
 
-    if (result.matchedCount === 0) {
+    if (result.matchedCount === 0)
       return res.status(404).json({ error: "User not found" });
-    }
 
-    res.json({ success: true });
+    res.json({ success: true, data: newRecord });
   } catch (err) {
     console.error("updateBMIUser error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+export const getBMIHistory = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Kiểm tra định dạng ObjectId
+    if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
+      return res.status(400).json({ error: "Invalid user ID format" });
+    }
+
+    const db = getDB();
+
+    // Tìm user, chỉ lấy field bodyStatsHistory
+    const user = await db.collection("user").findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { bodyStatsHistory: 1 } }
+    );
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const history = user.bodyStatsHistory || [];
+
+    // Sắp xếp theo ngày giảm dần và giới hạn 10 bản ghi gần nhất
+    const sorted = history
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 10);
+
+    res.json({
+      success: true,
+      count: sorted.length,
+      data: sorted,
+    });
+  } catch (err) {
+    console.error("getBMIHistory error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
