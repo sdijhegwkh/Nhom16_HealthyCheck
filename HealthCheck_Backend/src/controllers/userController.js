@@ -343,7 +343,7 @@ export const updateWaterGoal = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
+//lay bmi moi nhat
 export const getCurrentBMI = async (req, res) => {
   try {
     const { userId } = req.params;

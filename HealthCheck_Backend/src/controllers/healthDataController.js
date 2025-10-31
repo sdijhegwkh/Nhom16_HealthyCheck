@@ -1046,5 +1046,34 @@ export const getMonthlyNutrition = async (req, res) => {
   }
 };
 
+export const getTotalHealthData = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Kiểm tra userId hợp lệ
+    if (!ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, error: "Invalid userId" });
+    }
+
+    const db = getDB();
+
+    // Lấy phạm vi thời gian của ngày hôm nay (theo UTC)
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setUTCHours(23, 59, 59, 999);
+
+    const data = await db.collection("healthdata").findOne({
+      userId: new ObjectId(userId),
+      date: { $gte: start, $lte: end },
+    });
+
+    res.json({ success: true, data: data || null });
+  } catch (err) {
+    console.error("getTotalHealthData error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 
 
