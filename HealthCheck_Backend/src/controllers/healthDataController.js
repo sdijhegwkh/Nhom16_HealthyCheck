@@ -260,7 +260,6 @@ export const updateSleepSchedule = async (req, res) => {
       const [datePart, timePart] = str.split(" ");
       const [y, m, d] = datePart.split("-").map(Number);
       const [h, min] = timePart.split(":").map(Number);
-      // Tạo Date theo giờ local (VN)
       return new Date(y, m - 1, d, h, min);
     };
 
@@ -275,14 +274,12 @@ export const updateSleepSchedule = async (req, res) => {
         const durationMin = Math.round((wakeDate - sleepDate) / 60000);
         if (durationMin <= 0 || durationMin > 24 * 60) return null;
 
-        // CHỈ KIỂM TRA wakeDate TRONG NGÀY 29 (theo giờ VN)
         const wakeVN = new Date(wakeDate.getTime() + 7 * 60 * 60 * 1000);
         const wakeYear = wakeVN.getUTCFullYear();
         const wakeMonth = wakeVN.getUTCMonth();
         const wakeDay = wakeVN.getUTCDate();
 
         if (wakeYear !== year || wakeMonth !== month || wakeDay !== day) {
-          console.log("Invalid wake day:", wakeVN);
           return null;
         }
 
@@ -298,23 +295,32 @@ export const updateSleepSchedule = async (req, res) => {
       return res.json({ message: "No valid sessions" });
     }
 
-    const totalDuration = validSessions.reduce((sum, s) => sum + s.durationMin, 0);
+    const newDuration = validSessions.reduce((sum, s) => sum + s.durationMin, 0);
+    
+    // LẤY sleepDuration HIỆN TẠI TỪ DB
+    const currentSleepDuration = healthRecord.sleep?.sleepDuration || 0;
 
+    // CỘNG DỒN
+    const totalDuration = currentSleepDuration + newDuration;
+    const totalSleepHr = Math.round(totalDuration / 60);
+
+    // CẬP NHẬT DB: push session mới + cộng dồn thời gian
     await db.collection("healthdata").updateOne(
       { _id: healthRecord._id },
       {
         $push: { "sleep.sessions": { $each: validSessions } },
         $set: {
           "sleep.sleepDuration": totalDuration,
-          "sleep.totalSleepHr": Math.round(totalDuration / 60),
+          "sleep.totalSleepHr": totalSleepHr,
         },
       }
     );
 
     res.json({
       message: "Sleep saved!",
-      totalSleepHr: Math.round(totalDuration / 60),
-      sessions: validSessions,
+      totalSleepHr,
+      addedSessions: validSessions.length,
+      totalDurationMin: totalDuration,
     });
   } catch (err) {
     console.error("updateSleepSchedule error:", err);
@@ -1072,6 +1078,101 @@ export const getTotalHealthData = async (req, res) => {
   } catch (err) {
     console.error("getTotalHealthData error:", err);
     res.status(500).json({ success: false, error: err.message });
+  }
+};
+// routes/healthdata.js hoặc controller
+export const getWeeklyReport = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) return res.status(400).json({ message: "User ID required" });
+
+    const db = getDB();
+    const objectId = new ObjectId(userId);
+
+    // === GIỜ VIỆT NAM HIỆN TẠI (AN TOÀN 100%) ===
+    const nowVN = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    console.log("VN Time (forced):", nowVN.toLocaleString('vi-VN'));
+
+    // === NGÀY HIỆN TẠI 00:00 (GIỜ VN) ===
+    const todayVN = new Date(
+      nowVN.getFullYear(),
+      nowVN.getMonth(),
+      nowVN.getDate(),
+      0, 0, 0, 0
+    );
+
+    // === NGÀY MAI 00:00 (GIỜ VN) ===
+    const tomorrowVN = new Date(todayVN);
+    tomorrowVN.setDate(tomorrowVN.getDate() + 1);
+
+    // === 7 NGÀY TRƯỚC 00:00 (GIỜ VN) ===
+    const sevenDaysAgoVN = new Date(todayVN);
+    sevenDaysAgoVN.setDate(todayVN.getDate() - 6);
+
+    // === CHUYỂN SANG UTC ===
+    const startDateUTC = new Date(Date.UTC(
+      sevenDaysAgoVN.getFullYear(),
+      sevenDaysAgoVN.getMonth(),
+      sevenDaysAgoVN.getDate()
+    ));
+
+    const endDateUTC = new Date(Date.UTC(
+      tomorrowVN.getFullYear(),
+      tomorrowVN.getMonth(),
+      tomorrowVN.getDate()
+    ));
+
+    console.log("VN Today (00:00):", todayVN.toLocaleString('vi-VN'));
+    console.log("Query range (VN):", sevenDaysAgoVN.toLocaleString('vi-VN'), "→", tomorrowVN.toLocaleString('vi-VN'));
+    console.log("Query range (UTC):", startDateUTC.toISOString(), "→", endDateUTC.toISOString());
+
+    const records = await db.collection("healthdata").find({
+      userId: objectId,
+      date: { $gte: startDateUTC, $lt: endDateUTC }
+    }).toArray();
+
+    console.log("Records found:", records.length);
+    records.forEach(r => {
+      const vnDate = new Date(r.date.getTime() + 7 * 60 * 60 * 1000);
+      const sessionMin = (r.sleep?.sessions || []).reduce((s, ses) => s + (ses.durationMin || 0), 0);
+      console.log(`Date (VN): ${vnDate.toLocaleDateString('vi-VN')} | Sleep: ${sessionMin} min`);
+    });
+
+    if (!records.length) {
+      return res.json({
+        success: true,
+        data: { steps: 0, sleepHours: 0, sleepMinutes: 0, waterMl: 0, workoutMin: 0, calories: 0 }
+      });
+    }
+
+    const total = records.reduce((acc, record) => {
+      acc.steps += record.steps?.stepCount || 0;
+      const sessionSleepMin = (record.sleep?.sessions || []).reduce((s, ses) => s + (ses.durationMin || 0), 0);
+      acc.sleepMin += sessionSleepMin;
+      acc.waterMl += record.waterConsumed || 0;
+      acc.workoutMin += record.workout?.workDuration || 0;
+      acc.calories += record.nutrition?.caloriesConsumed || 0;
+      return acc;
+    }, { steps: 0, sleepMin: 0, waterMl: 0, workoutMin: 0, calories: 0 });
+
+    const sleepHours = Math.floor(total.sleepMin / 60);
+    const sleepMinutes = total.sleepMin % 60;
+
+    res.json({
+      success: true,
+      data: {
+        steps: total.steps,
+        sleepHours,
+        sleepMinutes,
+        waterMl: total.waterMl,
+        workoutMin: total.workoutMin,
+        calories: total.calories
+      }
+    });
+
+  } catch (err) {
+    console.error("getWeeklyReport error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
