@@ -32,18 +32,23 @@ interface UserData {
   bodyStatsHistory?: { bmi: number; date: string }[];
 }
 
+interface Blog {
+  _id: { $oid?: string } | string;
+  title: string;
+  category?: string;
+  content?: string;
+  votes: number;
+  imageUrl?: string;
+  authorName?: string;
+  createdAt?: string;
+}
+
 type OverviewItem = {
   label: string;
   value: string;
   color: string;
   icon: React.ComponentType<any>;
   iconName: string;
-};
-
-type BlogItem = {
-  title: string;
-  subtitle: string;
-  image: any;
 };
 
 export default function HomeScreen() {
@@ -61,6 +66,9 @@ export default function HomeScreen() {
     workoutMin: number;
   } | null>(null);
 
+  const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [blogLoading, setBlogLoading] = useState(true);
+
   // === ANIMATION ===
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -72,82 +80,89 @@ export default function HomeScreen() {
 
   // === LẤY DỮ LIỆU TỪ BACKEND ===
   useFocusEffect(
-  React.useCallback(() => {
-    let isActive = true;
+    React.useCallback(() => {
+      let isActive = true;
 
-    const fetchLatestData = async () => {
-      try {
-        setLoading(true);
+      const fetchAllData = async () => {
+        try {
+          setLoading(true);
+          setBlogLoading(true);
 
-        // 1. LẤY userId
-        const userData = await AsyncStorage.getItem("user");
-        if (!userData || !isActive) return;
+          const userData = await AsyncStorage.getItem("user");
+          if (!userData || !isActive) return;
 
-        const parsed = JSON.parse(userData);
-        const userId = parsed?.id || parsed?._id?.$oid || parsed?.userId?.$oid;
+          const parsed = JSON.parse(userData);
+          const userId =
+            parsed?.id || parsed?._id?.$oid || parsed?.userId?.$oid;
 
-        if (!userId) {
-          console.error("User ID not found:", parsed);
-          if (isActive) setLoading(false);
-          return;
-        }
+          if (!userId) {
+            console.error("User ID not found:", parsed);
+            if (isActive) setLoading(false);
+            return;
+          }
 
-        // 2. GỌI 3 API MỚI NHẤT (KHÔNG DÙNG CACHE)
-        const [resHealth, resUser, resWeekly] = await Promise.all([
-          fetch(`${API_URL}/healthdata/totalhealthdata/${userId}`),
-          fetch(`${API_URL}/users/${userId}`),
-          fetch(`${API_URL}/healthdata/weekly-report/${userId}`),
-        ]);
+          // GỌI API song song
+          const [resHealth, resUser, resWeekly, resBlogs] = await Promise.all([
+            fetch(`${API_URL}/healthdata/totalhealthdata/${userId}`),
+            fetch(`${API_URL}/users/${userId}`),
+            fetch(`${API_URL}/healthdata/weekly-report/${userId}`),
+            fetch(`${API_URL}/blogs/top`),
+          ]);
 
-        let newHealthData = null;
-        let newBmi = "—";
-        let newWeeklyData = null;
+          let newHealthData = null;
+          let newBmi = "—";
+          let newWeeklyData = null;
 
-        // Health Data (steps, sleep, water, ...)
-        if (resHealth.ok) {
-          const result = await resHealth.json();
-          if (result.success && result.data) {
-            newHealthData = result.data;
+          // Health Data
+          if (resHealth.ok) {
+            const result = await resHealth.json();
+            if (result.success && result.data) newHealthData = result.data;
+          }
+
+          // BMI
+          if (resUser.ok) {
+            const userResult = await resUser.json();
+            const history = userResult?.bodyStatsHistory || [];
+            if (history.length > 0)
+              newBmi = history.at(-1).bmi.toFixed(1);
+          }
+
+          // Weekly
+          if (resWeekly.ok) {
+            const weeklyResult = await resWeekly.json();
+            if (weeklyResult.success && weeklyResult.data)
+              newWeeklyData = weeklyResult.data;
+          }
+
+          // Blogs
+          if (resBlogs.ok) {
+            const blogResult = await resBlogs.json();
+            if (blogResult.success && blogResult.data && isActive)
+              setBlogs(blogResult.data);
+          }
+
+          if (isActive) {
+            setHealthData(newHealthData);
+            setBmi(newBmi);
+            setWeeklyData(newWeeklyData);
+          }
+        } catch (err) {
+          console.error("Error fetching home data:", err);
+        } finally {
+          if (isActive) {
+            setLoading(false);
+            setBlogLoading(false);
           }
         }
+      };
 
-        // BMI từ user
-        if (resUser.ok) {
-          const userResult = await resUser.json();
-          const history = userResult?.bodyStatsHistory || [];
-          if (history.length > 0) {
-            newBmi = history[history.length - 1].bmi.toFixed(1);
-          }
-        }
+      fetchAllData();
 
-        // Weekly Report
-        if (resWeekly.ok) {
-          const weeklyResult = await resWeekly.json();
-          if (weeklyResult.success && weeklyResult.data) {
-            newWeeklyData = weeklyResult.data;
-          }
-        }
-
-        // 3. CẬP NHẬT UI
-        if (isActive) {
-          setHealthData(newHealthData);
-          setBmi(newBmi);
-          setWeeklyData(newWeeklyData);
-        }
-      } catch (err) {
-        console.error("Lỗi khi lấy dữ liệu mới nhất:", err);
-      } finally {
-        if (isActive) setLoading(false);
-      }
-    };
-
-    fetchLatestData();
-
-    return () => {
-      isActive = false;
-    };
-  }, [])
-);
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   // === TÍNH TOÁN overviewData ===
   const overviewData: OverviewItem[] = useMemo(() => {
@@ -208,7 +223,6 @@ export default function HomeScreen() {
     ];
   }, [healthData, bmi, loading]);
 
-  // === WEEKLY REPORT (TRONG COMPONENT) ===
   const weeklyReport: OverviewItem[] = useMemo(() => {
     if (!weeklyData || loading) {
       return [
@@ -257,26 +271,7 @@ export default function HomeScreen() {
     month: "short",
   });
 
-  // === BLOGS ===
-  const blogs: BlogItem[] = [
-    {
-      title: "More about Apples",
-      subtitle: "Benefits, nutrition, and tips",
-      image: require("../assets/icon.png"),
-    },
-    {
-      title: "The science of Sleep",
-      subtitle: "How rest impacts your health",
-      image: require("../assets/icon.png"),
-    },
-    {
-      title: "Hydration Matters",
-      subtitle: "The importance of water daily",
-      image: require("../assets/icon.png"),
-    },
-  ];
-
-  // === LOADING SCREEN ===
+  // === LOADING ===
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -286,6 +281,7 @@ export default function HomeScreen() {
     );
   }
 
+  // === UI ===
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ScrollView
@@ -296,7 +292,10 @@ export default function HomeScreen() {
         {/* Header */}
         <LinearGradient colors={["#2563eb", "#60a5fa"]} style={styles.header}>
           <View style={styles.headerTop}>
-            <Image source={require("../assets/logoxoanen1.png")} style={styles.logo} />
+            <Image
+              source={require("../assets/logoxoanen1.png")}
+              style={styles.logo}
+            />
             <Text style={styles.appName}>KayTi</Text>
           </View>
           <Text style={styles.date}>{today}</Text>
@@ -318,9 +317,6 @@ export default function HomeScreen() {
               </Text>{" "}
               and considered good.
             </Text>
-            <TouchableOpacity>
-              <Text style={styles.healthLink}>Tell me more</Text>
-            </TouchableOpacity>
           </View>
           <View style={styles.scoreBadge}>
             <Text style={styles.scoreText}>
@@ -333,26 +329,12 @@ export default function HomeScreen() {
         <View style={styles.cardContainer}>
           {overviewData.map((item) => {
             const IconComp = item.icon;
-            const isStep = item.label === "Steps";
-            const isSleep = item.label === "Sleep";
-            const isWorkout = item.label === "Workout";
-            const isWater = item.label === "Water";
-            const isNutrition = item.label === "Nutrition";
-            const isBMI = item.label === "BMI";
-
             return (
               <TouchableOpacity
                 key={item.label}
                 activeOpacity={0.8}
                 style={[styles.card, { backgroundColor: item.color }]}
-                onPress={() => {
-                  if (isStep) navigation.navigate("Steps");
-                  if (isSleep) navigation.navigate("Sleep");
-                  if (isWorkout) navigation.navigate("Workout");
-                  if (isWater) navigation.navigate("Water");
-                  if (isNutrition) navigation.navigate("Nutrition");
-                  if (isBMI) navigation.navigate("BMI");
-                }}
+                onPress={() => navigation.navigate(item.label)}
               >
                 <IconComp name={item.iconName} size={32} color="#fff" />
                 <Text style={styles.cardLabel}>{item.label}</Text>
@@ -379,22 +361,42 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Blogs */}
+        {/* === BLOGS === */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Health Blogs</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingRight: 20 }}
-          >
-            {blogs.map((blog) => (
-              <View key={blog.title} style={styles.blogCard}>
-                <Image source={blog.image} style={styles.blogImage} />
-                <Text style={styles.blogTitle}>{blog.title}</Text>
-                <Text style={styles.blogSubtitle}>{blog.subtitle}</Text>
-              </View>
-            ))}
-          </ScrollView>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={styles.sectionTitle}>Health Blogs</Text>
+            <TouchableOpacity onPress={() => navigation.navigate("Blog")}>
+              <Text style={{ color: "#2563eb", fontWeight: "600" }}>Show All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {blogLoading ? (
+            <ActivityIndicator size="small" color="#2563eb" style={{ marginTop: 10 }} />
+          ) : blogs.length === 0 ? (
+            <Text style={{ color: "#555", marginTop: 10 }}>No blogs available.</Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+              {blogs.map((blog) => (
+                <View key={(blog._id as any)?.$oid || blog._id} style={styles.blogCard}>
+                  <Image
+                    source={{
+                      uri:
+                        blog.imageUrl ||
+                        "https://via.placeholder.com/300x200?text=No+Image",
+                    }}
+                    style={styles.blogImage}
+                    resizeMode="cover"
+                  />
+                  <Text style={styles.blogTitle} numberOfLines={1}>
+                    {blog.title}
+                  </Text>
+                  <Text style={styles.blogSubtitle} numberOfLines={2}>
+                    by {blog.authorName || "Unknown"} • ❤️ {blog.votes}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
         </View>
       </ScrollView>
 
@@ -402,6 +404,7 @@ export default function HomeScreen() {
     </Animated.View>
   );
 }
+
 
 // ====== STYLE ======
 const styles = StyleSheet.create({
