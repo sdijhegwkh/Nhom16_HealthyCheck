@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type RootStackParamList = {
   Home: undefined;
-  Explore: undefined;
+  Blog: undefined;
   Login: undefined;
 };
 
@@ -14,19 +14,30 @@ export default function BottomNav() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
 
-  const current = route.name; // lấy tên screen hiện tại
+  const current = route.name; 
 
   const items = [
     { name: 'Home', icon: 'home-outline' },
-    { name: 'Explore', icon: 'compass-outline' },
-    { name: 'Profile', icon: 'person-circle-outline', navigateTo: 'Login' },
+    { 
+      name: 'Explore', 
+      icon: 'compass-outline',
+      navigateTo: 'Blog' 
+    },
+    { 
+      name: 'Profile', 
+      icon: 'person-circle-outline', 
+      navigateTo: 'Login' 
+    },
   ];
 
   return (
     <View style={styles.navBar}>
       {items.map((item) => {
+        // ĐÚNG: So sánh current với navigateTo (nếu có)
         const isActive =
-          current === item.name || (item.name === 'Profile' && current === 'Login');
+          current === (item.navigateTo || item.name) || 
+          (item.name === 'Profile' && current === 'Login');
+
         const color = isActive ? '#2563eb' : '#666';
 
         return (

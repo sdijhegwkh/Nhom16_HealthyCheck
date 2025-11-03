@@ -42,20 +42,50 @@ export const getAllBlogs = async (req, res) => {
   }
 };
 
-// 🧩 (Tuỳ chọn) Lấy 1 blog chi tiết
-export const getBlogById = async (req, res) => {
+export const getBlogsByCategory = async (req, res) => {
   try {
-    const db = getDB();
-    const id = toObjectId(req.params.id);
-    const blog = await db.collection("blog").findOne({ _id: id });
+    const db = await getDB();
+    const rawCategory = req.params.category;
+    console.log("👉 Received category param:", rawCategory);
 
-    if (!blog) {
+    if (!rawCategory) {
+      return res.status(400).json({ success: false, message: "Category is required" });
+    }
+
+    const category = rawCategory.toLowerCase();
+    console.log("🔍 Querying with regex:", new RegExp(category, "i"));
+
+    const blogs = await db
+      .collection("blog")
+      .find({ category: { $regex: category, $options: "i" } })
+      .toArray();
+
+    console.log("✅ Found blogs count:", blogs.length);
+
+    res.json({ success: true, data: blogs });
+  } catch (err) {
+    console.error("❌ Error searching blogs by category:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+export const likeBlog = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getDB();
+
+    const result = await db.collection("blog").findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { $inc: { votes: 1 } },
+      { returnDocument: "after" }
+    );
+
+    if (!result.value) {
       return res.status(404).json({ success: false, message: "Blog not found" });
     }
 
-    res.status(200).json({ success: true, data: blog });
+    res.json({ success: true, votes: result.value.votes });
   } catch (err) {
-    console.error("Error fetching blog:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
