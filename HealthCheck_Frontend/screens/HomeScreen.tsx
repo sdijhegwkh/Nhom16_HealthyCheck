@@ -53,6 +53,13 @@ export default function HomeScreen() {
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [bmi, setBmi] = useState<string>("—");
   const [loading, setLoading] = useState(true);
+  const [weeklyData, setWeeklyData] = useState<{
+    steps: number;
+    sleepHours: number;
+    sleepMinutes: number;
+    waterMl: number;
+    workoutMin: number;
+  } | null>(null);
 
   // === ANIMATION ===
   useEffect(() => {
@@ -64,57 +71,83 @@ export default function HomeScreen() {
   }, []);
 
   // === LẤY DỮ LIỆU TỪ BACKEND ===
- useFocusEffect(
+  useFocusEffect(
   React.useCallback(() => {
-    let isActive = true; // kiểm tra tránh setState khi màn hình unmount
+    let isActive = true;
 
-    const fetchData = async () => {
+    const fetchLatestData = async () => {
       try {
         setLoading(true);
-        // ⏳ Delay 300ms để đợi NutritionScreen ghi xong MongoDB
-        await new Promise((resolve) => setTimeout(resolve, 300));
 
+        // 1. LẤY userId
         const userData = await AsyncStorage.getItem("user");
         if (!userData || !isActive) return;
 
         const parsed = JSON.parse(userData);
-        const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
-        if (!userId) return;
+        const userId = parsed?.id || parsed?._id?.$oid || parsed?.userId?.$oid;
 
-        // LẤY HEALTH DATA
-        const resHealth = await fetch(`${API_URL}/healthdata/totalhealthdata/${userId}`);
-        if (resHealth.ok) {
-          const result = await resHealth.json();
-          if (isActive && result.success && result.data) setHealthData(result.data);
+        if (!userId) {
+          console.error("User ID not found:", parsed);
+          if (isActive) setLoading(false);
+          return;
         }
 
-        // LẤY BMI
-        const resUser = await fetch(`${API_URL}/users/${userId}`);
+        // 2. GỌI 3 API MỚI NHẤT (KHÔNG DÙNG CACHE)
+        const [resHealth, resUser, resWeekly] = await Promise.all([
+          fetch(`${API_URL}/healthdata/totalhealthdata/${userId}`),
+          fetch(`${API_URL}/users/${userId}`),
+          fetch(`${API_URL}/healthdata/weekly-report/${userId}`),
+        ]);
+
+        let newHealthData = null;
+        let newBmi = "—";
+        let newWeeklyData = null;
+
+        // Health Data (steps, sleep, water, ...)
+        if (resHealth.ok) {
+          const result = await resHealth.json();
+          if (result.success && result.data) {
+            newHealthData = result.data;
+          }
+        }
+
+        // BMI từ user
         if (resUser.ok) {
           const userResult = await resUser.json();
           const history = userResult?.bodyStatsHistory || [];
-          if (isActive && history.length > 0) {
-            const latest = history[history.length - 1];
-            setBmi(latest.bmi.toFixed(1));
+          if (history.length > 0) {
+            newBmi = history[history.length - 1].bmi.toFixed(1);
           }
         }
+
+        // Weekly Report
+        if (resWeekly.ok) {
+          const weeklyResult = await resWeekly.json();
+          if (weeklyResult.success && weeklyResult.data) {
+            newWeeklyData = weeklyResult.data;
+          }
+        }
+
+        // 3. CẬP NHẬT UI
+        if (isActive) {
+          setHealthData(newHealthData);
+          setBmi(newBmi);
+          setWeeklyData(newWeeklyData);
+        }
       } catch (err) {
-        console.error("Load home data error:", err);
+        console.error("Lỗi khi lấy dữ liệu mới nhất:", err);
       } finally {
         if (isActive) setLoading(false);
       }
     };
 
-    fetchData();
+    fetchLatestData();
 
-    // Cleanup khi rời màn hình
     return () => {
       isActive = false;
     };
   }, [])
 );
-
-
 
   // === TÍNH TOÁN overviewData ===
   const overviewData: OverviewItem[] = useMemo(() => {
@@ -175,11 +208,73 @@ export default function HomeScreen() {
     ];
   }, [healthData, bmi, loading]);
 
+  // === WEEKLY REPORT (TRONG COMPONENT) ===
+  const weeklyReport: OverviewItem[] = useMemo(() => {
+    if (!weeklyData || loading) {
+      return [
+        { label: "Steps", value: "—", color: "#2563eb", icon: MaterialCommunityIcons, iconName: "shoe-print" },
+        { label: "Workout", value: "—", color: "#f87171", icon: Ionicons, iconName: "fitness-outline" },
+        { label: "Water", value: "—", color: "#3b82f6", icon: Ionicons, iconName: "water-outline" },
+        { label: "Sleep", value: "—", color: "#0ea5e9", icon: Ionicons, iconName: "moon" },
+      ];
+    }
+
+    return [
+      {
+        label: "Steps",
+        value: weeklyData.steps.toLocaleString(),
+        color: "#2563eb",
+        icon: MaterialCommunityIcons,
+        iconName: "shoe-print",
+      },
+      {
+        label: "Workout",
+        value: `${Math.floor(weeklyData.workoutMin / 60)}h ${weeklyData.workoutMin % 60}min`,
+        color: "#f87171",
+        icon: Ionicons,
+        iconName: "fitness-outline",
+      },
+      {
+        label: "Water",
+        value: `${weeklyData.waterMl.toLocaleString()}ml`,
+        color: "#3b82f6",
+        icon: Ionicons,
+        iconName: "water-outline",
+      },
+      {
+        label: "Sleep",
+        value: `${weeklyData.sleepHours}h ${weeklyData.sleepMinutes}min`,
+        color: "#0ea5e9",
+        icon: Ionicons,
+        iconName: "moon",
+      },
+    ];
+  }, [weeklyData, loading]);
+
   const today = new Date().toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "short",
   });
+
+  // === BLOGS ===
+  const blogs: BlogItem[] = [
+    {
+      title: "More about Apples",
+      subtitle: "Benefits, nutrition, and tips",
+      image: require("../assets/icon.png"),
+    },
+    {
+      title: "The science of Sleep",
+      subtitle: "How rest impacts your health",
+      image: require("../assets/icon.png"),
+    },
+    {
+      title: "Hydration Matters",
+      subtitle: "The importance of water daily",
+      image: require("../assets/icon.png"),
+    },
+  ];
 
   // === LOADING SCREEN ===
   if (loading) {
@@ -307,56 +402,6 @@ export default function HomeScreen() {
     </Animated.View>
   );
 }
-
-// ====== DỮ LIỆU TĨNH ======
-const weeklyReport: OverviewItem[] = [
-  {
-    label: "Steps",
-    value: "697,978",
-    color: "#2563eb",
-    icon: MaterialCommunityIcons,
-    iconName: "shoe-print",
-  },
-  {
-    label: "Workout",
-    value: "6h 45min",
-    color: "#f87171",
-    icon: Ionicons,
-    iconName: "fitness-outline",
-  },
-  {
-    label: "Water",
-    value: "10,659ml",
-    color: "#3b82f6",
-    icon: Ionicons,
-    iconName: "water-outline",
-  },
-  {
-    label: "Sleep",
-    value: "29h 17min",
-    color: "#0ea5e9",
-    icon: Ionicons,
-    iconName: "moon",
-  },
-];
-
-const blogs: BlogItem[] = [
-  {
-    title: "More about Apples",
-    subtitle: "Benefits, nutrition, and tips",
-    image: require("../assets/icon.png"),
-  },
-  {
-    title: "The science of Sleep",
-    subtitle: "How rest impacts your health",
-    image: require("../assets/icon.png"),
-  },
-  {
-    title: "Hydration Matters",
-    subtitle: "The importance of water daily",
-    image: require("../assets/icon.png"),
-  },
-];
 
 // ====== STYLE ======
 const styles = StyleSheet.create({

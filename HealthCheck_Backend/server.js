@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import { connectDB } from "./src/config/db.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import healthDataRoutes from "./src/routes/healthDataRoutes.js";
+import blogRoutes from "./src/routes/blogRoutes.js";
+
 
 dotenv.config();
 
@@ -42,6 +44,8 @@ app.get("/", (req, res) => {
 // Routes
 app.use("/users", userRoutes);
 app.use("/healthdata", healthDataRoutes);
+app.use("/blogs", blogRoutes);
+
 
 // Error handler (CORS hoặc khác)
 app.use((err, req, res, next) => {
