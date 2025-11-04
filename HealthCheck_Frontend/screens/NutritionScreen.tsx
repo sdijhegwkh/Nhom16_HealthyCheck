@@ -59,7 +59,7 @@ export default function NutritionScreen() {
     { range: string; kcal: number }[]
   >([]);
 
-  const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
+  const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 
   // Hiệu ứng mờ dần khi vào màn hình
   useEffect(() => {
