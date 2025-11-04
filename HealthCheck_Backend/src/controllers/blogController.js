@@ -71,20 +71,31 @@ export const getBlogsByCategory = async (req, res) => {
 export const likeBlog = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id || id.length !== 24) {
+      return res.status(400).json({ success: false, message: "Invalid blog ID" });
+    }
+
     const db = getDB();
+    let objectId;
+    try {
+      objectId = new ObjectId(id);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: "Invalid ObjectId format" });
+    }
 
     const result = await db.collection("blog").findOneAndUpdate(
-      { _id: new ObjectId(id) },
+      { _id: objectId },
       { $inc: { votes: 1 } },
       { returnDocument: "after" }
     );
 
-    if (!result.value) {
+    if (!result) {
       return res.status(404).json({ success: false, message: "Blog not found" });
     }
 
-    res.json({ success: true, votes: result.value.votes });
+    res.json({ success: true, votes: result.votes });
   } catch (err) {
+    console.error("Like blog error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

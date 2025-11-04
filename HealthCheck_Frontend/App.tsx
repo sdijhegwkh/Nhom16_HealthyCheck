@@ -13,6 +13,7 @@ import NutritionScreen from "./screens/NutritionScreen";
 import BMIScreen from "./screens/BMIScreen"; 
 import BlogScreen from "./screens/BlogScreen";
 import BlogDetailScreen from "./screens/BlogDetailScreen";
+import UserScreen from "./screens/UserScreen";
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -27,6 +28,7 @@ export type RootStackParamList = {
   BMI: undefined;
   Blog: undefined;
   BlogDetail: undefined;
+  User: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -47,6 +49,7 @@ export default function App() {
         <Stack.Screen name="BMI" component={BMIScreen} />
         <Stack.Screen name="Blog" component={BlogScreen} />
         <Stack.Screen name="BlogDetail" component={BlogDetailScreen} />
+        <Stack.Screen name="User" component={UserScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

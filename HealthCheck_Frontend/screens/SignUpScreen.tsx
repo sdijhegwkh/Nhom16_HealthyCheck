@@ -10,6 +10,7 @@ import {
   Pressable,
   Image,
   TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -65,27 +66,23 @@ export default function SignUpScreen({ navigation }: Props) {
       return;
     }
 
-    // Tính BMI = weight / (height(m)^2)
     const bmi = (weightNum / Math.pow(heightNum / 100, 2)).toFixed(1);
 
     try {
-      const response = await fetch(
-        "http://192.168.1.4:5000/users/signup",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            email,
-            password,
-            age: ageNum,
-            gender,
-            height: heightNum,
-            weight: weightNum,
-            bmi: parseFloat(bmi),
-          }),
-        }
-      );
+      const response = await fetch("http://192.168.1.4:5000/users/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          age: ageNum,
+          gender,
+          height: heightNum,
+          weight: weightNum,
+          bmi: parseFloat(bmi),
+        }),
+      });
 
       const data = await response.json();
 
@@ -104,7 +101,8 @@ export default function SignUpScreen({ navigation }: Props) {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <LinearGradient colors={["#2563eb", "#60a5fa"]} style={styles.container}>
         {/* Header */}
@@ -113,98 +111,112 @@ export default function SignUpScreen({ navigation }: Props) {
           <Text style={styles.brand}>KayTi</Text>
         </View>
 
-        {/* Form */}
-        <Animated.View
-          style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+        {/* Scrollable Form */}
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Create your account ✨</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your name"
-            placeholderTextColor="#aaa"
-            value={name}
-            onChangeText={setName}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Enter email"
-            placeholderTextColor="#aaa"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Enter password"
-            placeholderTextColor="#aaa"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Enter age"
-            placeholderTextColor="#aaa"
-            keyboardType="numeric"
-            value={age}
-            onChangeText={setAge}
-          />
-
-          {/* Gender Radio */}
-          <View style={styles.genderContainer}>
-            <Text style={styles.genderLabel}>Gender:</Text>
-            {["Male", "Female"].map((g) => (
-              <TouchableOpacity
-                key={g}
-                style={styles.radioOption}
-                onPress={() => setGender(g as "Male" | "Female")}
-              >
-                <View style={[styles.radioCircle, gender === g && styles.radioSelected]} />
-                <Text style={styles.radioText}>{g}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Enter height (cm)"
-            placeholderTextColor="#aaa"
-            keyboardType="numeric"
-            value={height}
-            onChangeText={setHeight}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Enter weight (kg)"
-            placeholderTextColor="#aaa"
-            keyboardType="numeric"
-            value={weight}
-            onChangeText={setWeight}
-          />
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              pressed && { backgroundColor: "#1e3a8a" },
+          <Animated.View
+            style={[
+              styles.card,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
             ]}
-            onPress={handleSignUp}
           >
-            <Text style={styles.buttonText}>Sign Up</Text>
-          </Pressable>
+            <Text style={styles.title}>Create your account</Text>
 
-          <Text style={styles.footerText}>
-            Already have an account?{" "}
-            <Text style={styles.link} onPress={() => navigation.navigate("Login")}>
-              Sign in
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your name"
+              placeholderTextColor="#aaa"
+              value={name}
+              onChangeText={setName}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter email"
+              placeholderTextColor="#aaa"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter password"
+              placeholderTextColor="#aaa"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter age"
+              placeholderTextColor="#aaa"
+              keyboardType="numeric"
+              value={age}
+              onChangeText={setAge}
+            />
+
+            {/* Gender Radio */}
+            <View style={styles.genderContainer}>
+              <Text style={styles.genderLabel}>Gender:</Text>
+              {["Male", "Female"].map((g) => (
+                <TouchableOpacity
+                  key={g}
+                  style={styles.radioOption}
+                  onPress={() => setGender(g as "Male" | "Female")}
+                >
+                  <View
+                    style={[
+                      styles.radioCircle,
+                      gender === g && styles.radioSelected,
+                    ]}
+                  />
+                  <Text style={styles.radioText}>{g}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter height (cm)"
+              placeholderTextColor="#aaa"
+              keyboardType="numeric"
+              value={height}
+              onChangeText={setHeight}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter weight (kg)"
+              placeholderTextColor="#aaa"
+              keyboardType="numeric"
+              value={weight}
+              onChangeText={setWeight}
+            />
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                pressed && { backgroundColor: "#1e3a8a" },
+              ]}
+              onPress={handleSignUp}
+            >
+              <Text style={styles.buttonText}>Sign Up</Text>
+            </Pressable>
+
+            <Text style={styles.footerText}>
+              Already have an account?{" "}
+              <Text style={styles.link} onPress={() => navigation.navigate("Login")}>
+                Sign in
+              </Text>
             </Text>
-          </Text>
-        </Animated.View>
+          </Animated.View>
+        </ScrollView>
       </LinearGradient>
     </KeyboardAvoidingView>
   );
@@ -212,16 +224,22 @@ export default function SignUpScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flex: 0.35, justifyContent: "flex-end", alignItems: "center", paddingBottom: 20 },
+  header: {
+    flex: 0.35,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 20,
+  },
   logo: { width: 100, height: 100 },
   brand: { fontSize: 40, fontWeight: "900", color: "#fff", letterSpacing: 2 },
   card: {
-    flex: 0.65,
+    flexGrow: 1,
     backgroundColor: "#fff",
     borderTopLeftRadius: 40,
     borderTopRightRadius: 40,
     alignItems: "center",
     paddingVertical: 40,
+    paddingHorizontal: 20,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: -4 },
@@ -230,7 +248,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: "bold", color: "#2563eb", marginBottom: 20 },
   input: {
-    width: "85%",
+    width: "100%",
     backgroundColor: "#f3f4f6",
     borderRadius: 10,
     padding: 14,
@@ -242,7 +260,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 18,
-    width: "85%",
+    width: "100%",
     justifyContent: "space-around",
   },
   genderLabel: { fontSize: 16, color: "#2563eb", fontWeight: "bold" },
@@ -258,7 +276,7 @@ const styles = StyleSheet.create({
   radioSelected: { backgroundColor: "#2563eb" },
   radioText: { fontSize: 16, color: "#333" },
   button: {
-    width: "85%",
+    width: "100%",
     backgroundColor: "#2563eb",
     borderRadius: 30,
     paddingVertical: 14,
