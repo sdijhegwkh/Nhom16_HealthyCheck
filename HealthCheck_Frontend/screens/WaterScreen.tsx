@@ -32,7 +32,7 @@ import { BarChart } from "react-native-chart-kit";
 
 const { width } = Dimensions.get("window");
 const AnimatedPath = Animated.createAnimatedComponent(Path);
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 
 export default function WaterScreen() {
   const navigation = useNavigation();

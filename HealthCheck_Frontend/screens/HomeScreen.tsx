@@ -16,7 +16,7 @@ import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 
 // === TYPE ===
 interface HealthData {
@@ -81,41 +81,59 @@ export default function HomeScreen() {
   }, []);
 
   // === TÍNH HEALTH SCORE TỪ WEEKLY DATA ===
-  const calculateHealthScore = (weekly: typeof weeklyData): number => {
-    if (!weekly) return 100;
+  // === TÍNH HEALTH SCORE THEO BẢNG MỚI ===
+const calculateHealthScore = (weekly: typeof weeklyData): number => {
+  if (!weekly) return 100;
 
-    let score = 100;
+  let score = 100;
 
-    // MỤC TIÊU TUẦN
-    const GOAL_STEPS = 56000;
-    const GOAL_SLEEP_HOURS = 56;
-    const GOAL_WATER_ML = 14000;
-    const GOAL_WORKOUT_MIN = 180;
-    const GOAL_CALORIES = 18000;
+  const GOAL_STEPS = 56000;
+  const GOAL_SLEEP_HOURS = 56;
+  const GOAL_WATER_ML = 14000;
+  const GOAL_WORKOUT_MIN = 180;
+  const GOAL_CALORIES = 18000;
 
-    // DỮ LIỆU THỰC TẾ
-    const actualSteps = weekly.steps;
-    const actualSleepHours = weekly.sleepHours + weekly.sleepMinutes / 60;
-    const actualWaterMl = weekly.waterMl;
-    const actualWorkoutMin = weekly.workoutMin;
-    const actualCalories = weekly.calories || 0;
+  const actualSteps = weekly.steps;
+  const actualSleepHours = weekly.sleepHours + weekly.sleepMinutes / 60;
+  const actualWaterMl = weekly.waterMl;
+  const actualWorkoutMin = weekly.workoutMin;
+  const actualCalories = weekly.calories || 0;
 
-    // TÍNH CHÊNH LỆCH
-    const diffSteps = Math.abs(actualSteps - GOAL_STEPS);
-    const diffSleep = Math.abs(actualSleepHours - GOAL_SLEEP_HOURS);
-    const diffWater = Math.abs(actualWaterMl - GOAL_WATER_ML);
-    const diffWorkout = Math.abs(actualWorkoutMin - GOAL_WORKOUT_MIN);
-    const diffCalories = Math.abs(actualCalories - GOAL_CALORIES);
+  const deductPoints = (actual: number, goal: number, isHigherBetter: boolean = true) => {
+    const diff = actual - goal;
+    const absDiff = Math.abs(diff);
+    const percentDiff = goal > 0 ? (absDiff / goal) * 100 : 0;
 
-    // TRỪ ĐIỂM NẾU VƯỢT NGƯỠNG
-    if (diffSteps > 6000) score -= 20;
-    if (diffSleep > 6) score -= 20;
-    if (diffWater > 2000) score -= 20;
-    if (diffWorkout > 30) score -= 20;
-    if (diffCalories > 2000) score -= 20;
+    if (percentDiff <= 10) return 0;
 
-    return Math.max(0, score); // Không âm
+    if (isHigherBetter) {
+      if (diff < 0) {
+        // Thiếu
+        if (percentDiff <= 20) return -5;
+        if (percentDiff <= 30) return -10;
+        return -20;
+      } else {
+        // Dư
+        if (percentDiff <= 30) return 0;
+        if (percentDiff <= 50) return -5;
+        return -10;
+      }
+    } else {
+      // Calories: càng gần càng tốt
+      if (percentDiff <= 20) return -5;
+      if (percentDiff <= 30) return -10;
+      return -20;
+    }
   };
+
+  score += deductPoints(actualSteps, GOAL_STEPS, true);
+  score += deductPoints(actualSleepHours, GOAL_SLEEP_HOURS, true);
+  score += deductPoints(actualWaterMl, GOAL_WATER_ML, true);
+  score += deductPoints(actualWorkoutMin, GOAL_WORKOUT_MIN, true);
+  score += deductPoints(actualCalories, GOAL_CALORIES, false);
+
+  return Math.max(0, score);
+};
 
   // === CẬP NHẬT HEALTH SCORE KHI CÓ WEEKLY DATA ===
   useEffect(() => {

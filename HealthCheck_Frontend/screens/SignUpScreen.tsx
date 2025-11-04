@@ -69,7 +69,7 @@ export default function SignUpScreen({ navigation }: Props) {
     const bmi = (weightNum / Math.pow(heightNum / 100, 2)).toFixed(1);
 
     try {
-      const response = await fetch("http://192.168.1.4:5000/users/signup", {
+      const response = await fetch("https://nhom16-healthycheck.onrender.com/users/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

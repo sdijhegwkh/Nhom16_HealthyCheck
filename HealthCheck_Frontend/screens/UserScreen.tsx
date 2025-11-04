@@ -15,7 +15,7 @@ import BottomNav from "../components/BottomNav";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 
 interface User {
   _id: { $oid: string } | string;

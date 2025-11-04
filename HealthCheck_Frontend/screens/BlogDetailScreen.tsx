@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 
 interface Blog {
   _id: { $oid: string };
