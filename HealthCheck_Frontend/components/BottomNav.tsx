@@ -26,7 +26,7 @@ export default function BottomNav() {
     { 
       name: 'Profile', 
       icon: 'person-circle-outline', 
-      navigateTo: 'Login' 
+      navigateTo: 'User' 
     },
   ];
 

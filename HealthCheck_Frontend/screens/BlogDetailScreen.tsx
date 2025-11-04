@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -35,6 +35,7 @@ export default function BlogDetailScreen() {
   const [isReady, setIsReady] = useState(false);
   const [votes, setVotes] = useState(blog?.votes || 0);
   const [isLiking, setIsLiking] = useState(false);
+  const hasLikedRef = useRef(false);
 
   // Delay 300ms
   useEffect(() => {
@@ -50,29 +51,38 @@ export default function BlogDetailScreen() {
       year: "numeric",
     });
   };
+  const getBlogId = (blog: Blog) => {
+  if (!blog?._id) return null;
+  if (typeof blog._id === "string") return blog._id;
+  if (blog._id.$oid) return blog._id.$oid;
+  return null;
+};
 
   // Gọi API like
   const handleLike = async () => {
-    if (isLiking || !blog?._id) return;
-    setIsLiking(true);
+  const blogId = getBlogId(blog);
+  if (isLiking || !blogId || hasLikedRef.current) return;
 
-    try {
-      const res = await fetch(`${API_URL}/blogs/${blog._id.$oid}/like`, {
-        method: "POST",
-      });
-      const data = await res.json();
+  setIsLiking(true);
+  hasLikedRef.current = true;
+  try {
+    const res = await fetch(`${API_URL}/blogs/${blogId}/like`, {
+      method: "POST",
+    });
+    const data = await res.json();
 
-      if (data.success) {
-        setVotes(data.votes);
-      } else {
-        Alert.alert("Lỗi", "Không thể thích bài viết");
-      }
-    } catch (err) {
-      Alert.alert("Lỗi", "Kết nối thất bại");
-    } finally {
-      setIsLiking(false);
+    if (data.success) {
+      setVotes(data.votes);
+    } else {
+      Alert.alert("Lỗi", data.message || "Không thể thích bài viết");
     }
-  };
+  } catch (err) {
+    console.error("Like error:", err);
+    Alert.alert("Lỗi", "Không kết nối được server");
+  } finally {
+    setIsLiking(false);
+  }
+};
 
   if (!isReady || !blog) {
     return (

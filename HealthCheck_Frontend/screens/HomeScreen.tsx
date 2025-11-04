@@ -64,10 +64,12 @@ export default function HomeScreen() {
     sleepMinutes: number;
     waterMl: number;
     workoutMin: number;
+    calories?: number;
   } | null>(null);
 
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [blogLoading, setBlogLoading] = useState(true);
+  const [healthScore, setHealthScore] = useState(100); // ← MỚI: Health Score tự tính
 
   // === ANIMATION ===
   useEffect(() => {
@@ -77,6 +79,51 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // === TÍNH HEALTH SCORE TỪ WEEKLY DATA ===
+  const calculateHealthScore = (weekly: typeof weeklyData): number => {
+    if (!weekly) return 100;
+
+    let score = 100;
+
+    // MỤC TIÊU TUẦN
+    const GOAL_STEPS = 56000;
+    const GOAL_SLEEP_HOURS = 56;
+    const GOAL_WATER_ML = 14000;
+    const GOAL_WORKOUT_MIN = 180;
+    const GOAL_CALORIES = 18000;
+
+    // DỮ LIỆU THỰC TẾ
+    const actualSteps = weekly.steps;
+    const actualSleepHours = weekly.sleepHours + weekly.sleepMinutes / 60;
+    const actualWaterMl = weekly.waterMl;
+    const actualWorkoutMin = weekly.workoutMin;
+    const actualCalories = weekly.calories || 0;
+
+    // TÍNH CHÊNH LỆCH
+    const diffSteps = Math.abs(actualSteps - GOAL_STEPS);
+    const diffSleep = Math.abs(actualSleepHours - GOAL_SLEEP_HOURS);
+    const diffWater = Math.abs(actualWaterMl - GOAL_WATER_ML);
+    const diffWorkout = Math.abs(actualWorkoutMin - GOAL_WORKOUT_MIN);
+    const diffCalories = Math.abs(actualCalories - GOAL_CALORIES);
+
+    // TRỪ ĐIỂM NẾU VƯỢT NGƯỠNG
+    if (diffSteps > 6000) score -= 20;
+    if (diffSleep > 6) score -= 20;
+    if (diffWater > 2000) score -= 20;
+    if (diffWorkout > 30) score -= 20;
+    if (diffCalories > 2000) score -= 20;
+
+    return Math.max(0, score); // Không âm
+  };
+
+  // === CẬP NHẬT HEALTH SCORE KHI CÓ WEEKLY DATA ===
+  useEffect(() => {
+    if (weeklyData) {
+      const score = calculateHealthScore(weeklyData);
+      setHealthScore(score);
+    }
+  }, [weeklyData]);
 
   // === LẤY DỮ LIỆU TỪ BACKEND ===
   useFocusEffect(
@@ -101,7 +148,7 @@ export default function HomeScreen() {
             return;
           }
 
-          // GỌI API song song
+          // GỌI API SONG SONG
           const [resHealth, resUser, resWeekly, resBlogs] = await Promise.all([
             fetch(`${API_URL}/healthdata/totalhealthdata/${userId}`),
             fetch(`${API_URL}/users/${userId}`),
@@ -113,7 +160,7 @@ export default function HomeScreen() {
           let newBmi = "—";
           let newWeeklyData = null;
 
-          // Health Data
+          // Health Data (hôm nay)
           if (resHealth.ok) {
             const result = await resHealth.json();
             if (result.success && result.data) newHealthData = result.data;
@@ -127,7 +174,7 @@ export default function HomeScreen() {
               newBmi = history.at(-1).bmi.toFixed(1);
           }
 
-          // Weekly
+          // Weekly Report
           if (resWeekly.ok) {
             const weeklyResult = await resWeekly.json();
             if (weeklyResult.success && weeklyResult.data)
@@ -223,6 +270,7 @@ export default function HomeScreen() {
     ];
   }, [healthData, bmi, loading]);
 
+  // === WEEKLY REPORT VỚI CALORIES ===
   const weeklyReport: OverviewItem[] = useMemo(() => {
     if (!weeklyData || loading) {
       return [
@@ -230,6 +278,7 @@ export default function HomeScreen() {
         { label: "Workout", value: "—", color: "#f87171", icon: Ionicons, iconName: "fitness-outline" },
         { label: "Water", value: "—", color: "#3b82f6", icon: Ionicons, iconName: "water-outline" },
         { label: "Sleep", value: "—", color: "#0ea5e9", icon: Ionicons, iconName: "moon" },
+        { label: "Calories", value: "—", color: "#f97316", icon: Ionicons, iconName: "flame-outline" },
       ];
     }
 
@@ -261,6 +310,13 @@ export default function HomeScreen() {
         color: "#0ea5e9",
         icon: Ionicons,
         iconName: "moon",
+      },
+      {
+        label: "Calories",
+        value: `${weeklyData.calories?.toLocaleString() || 0} kcal`,
+        color: "#f97316",
+        icon: Ionicons,
+        iconName: "flame-outline",
       },
     ];
   }, [weeklyData, loading]);
@@ -306,22 +362,20 @@ export default function HomeScreen() {
           Overview <Ionicons name="stats-chart-outline" size={26} color="#2563eb" />
         </Text>
 
-        {/* Health Score */}
+        {/* Health Score – DÙNG HEALTHSCORE TỰ TÍNH */}
         <View style={styles.healthCard}>
           <View>
             <Text style={styles.healthTitle}>Health Score</Text>
             <Text style={styles.healthDesc}>
-              Based on your overview health tracking, your score is{" "}
-              <Text style={{ fontWeight: "bold" }}>
-                {healthData?.healthScore ?? "—"}
-              </Text>{" "}
-              and considered good.
+              Based on your weekly health tracking, your score is{" "}
+              <Text style={{ fontWeight: "bold" }}>{healthScore}</Text> and considered{" "}
+              <Text style={{ fontWeight: "bold", color: healthScore >= 80 ? "#10b981" : healthScore >= 50 ? "#f59e0b" : "#ef4444" }}>
+                {healthScore >= 80 ? "excellent" : healthScore >= 50 ? "fair" : "needs improvement"}
+              </Text>.
             </Text>
           </View>
           <View style={styles.scoreBadge}>
-            <Text style={styles.scoreText}>
-              {healthData?.healthScore ?? "—"}
-            </Text>
+            <Text style={styles.scoreText}>{healthScore}</Text>
           </View>
         </View>
 
@@ -375,36 +429,49 @@ export default function HomeScreen() {
           ) : blogs.length === 0 ? (
             <Text style={{ color: "#555", marginTop: 10 }}>No blogs available.</Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
-              {blogs.map((blog) => (
-                <View key={(blog._id as any)?.$oid || blog._id} style={styles.blogCard}>
-                  <Image
-                    source={{
-                      uri:
-                        blog.imageUrl ||
-                        "https://via.placeholder.com/300x200?text=No+Image",
-                    }}
-                    style={styles.blogImage}
-                    resizeMode="cover"
-                  />
-                  <Text style={styles.blogTitle} numberOfLines={1}>
-                    {blog.title}
-                  </Text>
-                  <Text style={styles.blogSubtitle} numberOfLines={2}>
-                    by {blog.authorName || "Unknown"} • ❤️ {blog.votes}
-                  </Text>
-                </View>
-              ))}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingRight: 20 }}
+            >
+              {blogs.map((blog) => {
+                const blogId = typeof blog._id === "string"
+                  ? blog._id
+                  : blog._id?.$oid || String(blog._id);
+
+                return (
+                  <TouchableOpacity
+                    key={blogId}
+                    style={styles.blogCard}
+                    onPress={() => navigation.navigate("BlogDetail", { blog })}
+                    activeOpacity={0.8}
+                  >
+                    <Image
+                      source={{
+                        uri: blog.imageUrl || "https://via.placeholder.com/300x200?text=No+Image",
+                      }}
+                      style={styles.blogImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.blogContent}>
+                      <Text style={styles.blogTitle} numberOfLines={1}>
+                        {blog.title}
+                      </Text>
+                      <Text style={styles.blogSubtitle} numberOfLines={2}>
+                        by {blog.authorName || "Unknown"} {blog.votes}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           )}
         </View>
       </ScrollView>
-
       <BottomNav />
     </Animated.View>
   );
 }
-
 
 // ====== STYLE ======
 const styles = StyleSheet.create({
@@ -444,7 +511,6 @@ const styles = StyleSheet.create({
   },
   healthTitle: { fontSize: 18, fontWeight: "700", color: "#111" },
   healthDesc: { color: "#333", marginTop: 6, lineHeight: 20, width: 220 },
-  healthLink: { color: "#2563eb", marginTop: 8, fontWeight: "600", fontSize: 14 },
   scoreBadge: {
     backgroundColor: "#fb923c",
     borderRadius: 12,
@@ -511,5 +577,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: "#666",
     fontSize: 16,
+  },
+  blogContent: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
   },
 });

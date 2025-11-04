@@ -141,7 +141,7 @@ export default function BlogScreen() {
               <View style={styles.blogContent}>
                 <Text style={styles.blogTitle}>{blog.title}</Text>
                 <Text style={styles.blogSubtitle}>
-                  {blog.authorName || "Unknown"} • ❤️ {blog.votes}
+                  {blog.authorName || "Unknown"} • 👍 {blog.votes}
                 </Text>
 
                 {/* NÚT XEM THÊM */}
