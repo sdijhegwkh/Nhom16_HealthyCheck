@@ -15,12 +15,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BarChart } from "react-native-chart-kit";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 const screenWidth = Dimensions.get("window").width;
 
 export default function SleepScreen() {
@@ -329,7 +330,7 @@ useEffect(() => {
     await axios.post(`${API_URL}/healthdata/sleep/schedule/${userId}`, {
       sessions: newSessions,
     });
-
+navigation.navigate("Home", { refresh: true });
     setSleepSchedules((prev) =>
       prev.map((s) => ({ ...s, isLocked: true }))
     );
@@ -353,66 +354,87 @@ useEffect(() => {
   };
 
   // ========== CHART DATA ==========
-  const renderChartData = () => {
-    const todaySleepHours = sleepDuration
-      ? parseFloat(sleepDuration.split("h")[0]) +
-        parseInt(sleepDuration.split(" ")[1]) / 60
-      : 0;
+  // Trong renderChartData()
+const renderChartData = () => {
+  const todaySleepHours = sleepDuration
+    ? parseFloat(sleepDuration.split("h")[0]) +
+      parseInt(sleepDuration.split(" ")[1]) / 60
+    : 0;
 
-    const chartConfig = {
-      backgroundGradientFrom: "#fff",
-      backgroundGradientTo: "#fff",
-      decimalPlaces: 1,
-      color: (opacity = 1) => `rgba(124, 58, 237, ${opacity})`,
-      labelColor: () => "#333",
-      propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
+  const chartConfig = {
+    backgroundGradientFrom: "#fff",
+    backgroundGradientTo: "#fff",
+    decimalPlaces: 1,
+    color: (opacity = 1) => `rgba(124, 58, 237, ${opacity})`,
+    labelColor: () => "#333",
+    propsForBackgroundLines: { stroke: "rgba(0,0,0,0.05)" },
+  };
+
+  if (selectedTab === "today") {
+    return {
+      labels: ["Goal 🏆", "Actual"],
+      datasets: [
+        {
+          data: [sleepGoal, todaySleepHours],
+          colors: [() => "#facc15", () => "#7c3aed"],
+        },
+      ],
     };
+  } else if (selectedTab === "week") {
+    const displayData = [...weekData].reverse();
+    const displayLabels = [...weekLabels].reverse();
+    const labels = ["Goal", ...displayLabels];
+    const data = [sleepGoal, ...displayData];
+    const colors = data.map((_, i) =>
+      i === 0 ? () => "#facc15" : () => "#7c3aed"
+    );
+    return { labels, datasets: [{ data, colors }] };
+  } else {
+  // Tab "month": 30 ngày gần nhất, today đầu tiên bên trái
+  const today = new Date();
+  const todayVN = new Date(today.getTime() + 7 * 60 * 60 * 1000);
+  const vnYear = todayVN.getUTCFullYear();
+  const vnMonth = todayVN.getUTCMonth();
+  const vnDate = todayVN.getUTCDate();
 
-    if (selectedTab === "today") {
-      return {
-        labels: ["Goal 🏆", "Actual"],
-        datasets: [
-          {
-            data: [sleepGoal, todaySleepHours],
-            colors: [() => "#facc15", () => "#7c3aed"],
-          },
-        ],
-      };
-    } else if (selectedTab === "week") {
-  // Backend: [6 ngày trước, ..., hôm nay]
-  const displayData = [...weekData].reverse();     // [hôm nay, 27, 26, ...]
-  const displayLabels = [...weekLabels].reverse(); // ["28 (hôm nay)", "27", ...]
-  console.log(weekLabels);
+  const displayData: number[] = [];
+  const displayLabels: string[] = [];
+
+  // monthData[0] → 30 ngày trước, monthData[29] → hôm nay
+  for (let i = 29; i >= 0; i--) {
+    displayData.push(monthData[i] || 0);
+
+    const targetDate = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+    targetDate.setUTCDate(vnDate - (29 - i)); // 29 - i ngày trước
+    const label =
+      i === 29
+        ? `Today(${targetDate.getUTCDate()})`
+        : `${targetDate.getUTCDate()}`;
+    displayLabels.push(label);
+  }
 
   const labels = ["Goal", ...displayLabels];
   const data = [sleepGoal, ...displayData];
-  const colors = data.map((_, i) => (i === 0 ? () => "#facc15" : () => "#7c3aed"));
+  const colors = data.map((_, i) =>
+    i === 0 ? () => "#facc15" : () => "#7c3aed"
+  );
 
   return { labels, datasets: [{ data, colors }] };
-    } else {
-      const labels = [
-        "Goal 🏆",
-        "1-5",
-        "6-10",
-        "11-15",
-        "16-20",
-        "21-25",
-        "26-End",
-      ];
-      const data = [sleepGoal, ...monthData];
-      const colors = data.map((_, i) =>
-        i === 0 ? () => "#facc15" : () => "#7c3aed"
-      );
-      return { labels, datasets: [{ data, colors }] };
-    }
-  };
+}
+};
 
-  const chartWidth =
-    selectedTab === "today"
-      ? screenWidth - 40
-      : selectedTab === "week"
-      ? screenWidth * 1.6
-      : screenWidth * 2.2;
+  const getChartWidth = () => {
+  let numCols = 0;
+  if (selectedTab === "today") numCols = 8; // Goal + Actual
+  else if (selectedTab === "week") numCols = 12; // Goal + 7 ngày
+  else if (selectedTab === "month") numCols = 31; // Goal + 30 ngày
+  const colWidth = 40; // chiều rộng 1 cột
+  const spacing = 10;  // khoảng cách giữa cột
+  return numCols * (colWidth + spacing);
+};
+
+const chartWidth = getChartWidth();
+
 
   // ================= RENDER =================
   return (
@@ -483,7 +505,7 @@ useEffect(() => {
               ) : (
                 <BarChart
                   data={renderChartData()}
-                  width={chartWidth}
+                 width={(chartWidth)} 
                   height={220}
                   fromZero
                   yAxisSuffix="h"

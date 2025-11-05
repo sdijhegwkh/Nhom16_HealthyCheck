@@ -195,7 +195,6 @@ export default function StepsScreen() {
         setGoal(newGoal);
         setEditingGoal(false);
 
-        // update AsyncStorage
         const storedUser = await AsyncStorage.getItem("user");
         if (storedUser) {
           const parsed = JSON.parse(storedUser);
@@ -203,7 +202,6 @@ export default function StepsScreen() {
           await AsyncStorage.setItem("user", JSON.stringify(parsed));
         }
 
-        // ✅ Thêm dòng này để fetch lại dữ liệu ngày
         fetchStats("day");
 
         Alert.alert("✅ Updated", "Your step goal has been updated!");
@@ -221,8 +219,8 @@ export default function StepsScreen() {
     selectedTab === "day"
       ? stepsDisplay
       : selectedTab === "week"
-      ? weeklyData.reduce((a, b) => a + b, 0)
-      : monthlyData.reduce((a, b) => a + b, 0);
+      ? weeklyData.reduce((a, b) => a + b, 0) + sessionSteps
+      : monthlyData.reduce((a, b) => a + b, 0) + sessionSteps;
   const displayGoal =
     selectedTab === "day"
       ? goal
@@ -233,15 +231,51 @@ export default function StepsScreen() {
   const displayKcal = Math.round(displayData * 0.04);
   const displayDistance = (displayData * 0.0008).toFixed(2);
   const displayMinutes = Math.round(displayData / 120);
-  const monthlyChartData = [];
-  for (let i = 0; i < monthlyData.length; i += 5) {
-    const chunk = monthlyData.slice(i, i + 5);
-    const sum = chunk.reduce((a, b) => a + b, 0);
-    monthlyChartData.push(sum);
+
+  // === Weekly chart with today updated ===
+  const getWeeklyChartData = () => {
+    if (!weeklyData || weeklyData.length !== 7) return { data: [], labels: [] };
+    const updatedData = [...weeklyData];
+    updatedData[6] += sessionSteps; // add current session to today
+    const today = new Date();
+    const labels = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const dayLabel = i === 0 ? `${d.getDate()} (Today)` : `${d.getDate()}`;
+      labels.push(dayLabel);
+    }
+    return { data: updatedData, labels };
+  };
+
+  // === Monthly chart ===
+  // === Monthly chart with today updated ===
+const getMonthlyChartData = () => {
+  if (!monthlyData || monthlyData.length < 1) return { data: [], labels: [] };
+
+  const today = new Date();
+  const labels: string[] = [];
+  const data: number[] = [];
+
+  // Chuỗi dữ liệu tháng: monthlyData cuối cùng là hôm nay
+  const updatedData = [...monthlyData];
+  updatedData[updatedData.length - 1] += sessionSteps;
+
+  // Tạo nhãn dựa trên ngày hôm nay và số ngày của monthlyData
+  for (let i = updatedData.length - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(today.getDate() - (updatedData.length - 1 - i)); // lùi ngày
+    labels.push(
+      d.getDate() === today.getDate() ? `Today(${d.getDate()})` : `${d.getDate()}`
+    );
+    data.push(updatedData[i]);
   }
-  const monthlyLabels = monthlyChartData.map(
-    (_, i) => `${i * 5 + 1}-${i * 5 + 5}`
-  );
+
+  return { labels, data };
+};
+
+
+
 
   const chartConfig = {
     backgroundColor: "#fff",
@@ -362,7 +396,7 @@ export default function StepsScreen() {
                   selectedTab === tab && styles.activeTabText,
                 ]}
               >
-                {tab === "day" ? "Ngày" : tab === "week" ? "Tuần" : "Tháng"}
+                {tab === "day" ? "Day" : tab === "week" ? "Week" : "Month"}
               </Text>
             </TouchableOpacity>
           ))}
@@ -395,17 +429,20 @@ export default function StepsScreen() {
             </>
           )}
 
-          {selectedTab === "week" && weeklyData.length >= 7 ? (
-            <LineChart
+          {selectedTab === "week" && weeklyData.length === 7 ? (
+            <BarChart
               data={{
-                labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-                datasets: [{ data: weeklyData }],
+                labels: getWeeklyChartData().labels.reverse(), // đảo nhãn để Today nằm đầu
+                datasets: [
+                  { data: getWeeklyChartData().data.reverse() }, // đảo dữ liệu khớp nhãn
+                ],
               }}
-              width={screenWidth - 40}
+              width={screenWidth}
               height={220}
+              fromZero
               chartConfig={chartConfig}
-              bezier
               style={styles.chart}
+              showValuesOnTopOfBars
             />
           ) : selectedTab === "week" ? (
             <Text style={{ color: "#6b7280", marginTop: 10 }}>
@@ -413,23 +450,31 @@ export default function StepsScreen() {
             </Text>
           ) : null}
 
-          {selectedTab === "month" && monthlyData.length >= 10 ? (
-            <LineChart
-              data={{
-                labels: monthlyLabels,
-                datasets: [{ data: monthlyChartData }],
-              }}
-              width={screenWidth - 40}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.chart}
-            />
-          ) : selectedTab === "month" ? (
-            <Text style={{ color: "#6b7280", marginTop: 10 }}>
-              Chưa đủ dữ liệu để hiển thị biểu đồ tháng.
-            </Text>
-          ) : null}
+   {selectedTab === "month" && monthlyData.length >= 1 ? (
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View style={{ paddingLeft: 10, paddingRight: 20 }}>
+      <BarChart
+        data={{
+          labels: getMonthlyChartData().labels,
+          datasets: [{ data: getMonthlyChartData().data }],
+        }}
+        width={Math.max(screenWidth, getMonthlyChartData().labels.length * 40)} 
+        height={220}
+        fromZero
+        chartConfig={chartConfig}
+        style={{ marginVertical: 8, borderRadius: 16 }}
+        showValuesOnTopOfBars
+        withInnerLines={true}
+        withHorizontalLabels={true}
+      />
+    </View>
+  </ScrollView>
+) : selectedTab === "month" ? (
+  <Text style={{ color: "#6b7280", marginTop: 10 }}>
+    Chưa đủ dữ liệu để hiển thị biểu đồ tháng.
+  </Text>
+) : null}
+
         </View>
       </ScrollView>
     </Animated.View>
