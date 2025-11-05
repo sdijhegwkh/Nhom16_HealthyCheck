@@ -1175,6 +1175,42 @@ export const getWeeklyReport = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+export const updateHealthScore = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { healthScore } = req.body;
+
+    if (!userId || healthScore === undefined) {
+      return res.status(400).json({ success: false, message: "Missing data" });
+    }
+
+    const db = getDB();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const result = await db.collection("healthdata").updateOne(
+      {
+        userId: new ObjectId(userId),
+        date: {
+          $gte: today,
+          $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+        },
+      },
+      { $set: { healthScore, updatedAt: new Date() } },
+      { upsert: true } // Tạo mới nếu chưa có
+    );
+
+    res.json({
+      success: true,
+      message: "Health Score updated",
+      modified: result.modifiedCount,
+      upserted: result.upsertedCount,
+    });
+  } catch (err) {
+    console.error("Update score error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
 
 
