@@ -225,7 +225,7 @@ export default function SignUpScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    flex: 0.35,
+    height: 230,
     justifyContent: "flex-end",
     alignItems: "center",
     paddingBottom: 20,
