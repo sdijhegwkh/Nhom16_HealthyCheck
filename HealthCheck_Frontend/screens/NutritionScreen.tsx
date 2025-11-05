@@ -59,7 +59,7 @@ export default function NutritionScreen() {
     { range: string; kcal: number }[]
   >([]);
 
-  const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
+  const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 
   // Hiệu ứng mờ dần khi vào màn hình
   useEffect(() => {
@@ -251,90 +251,60 @@ export default function NutritionScreen() {
     loadNutrition();
   }, []);
   useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const userData = await AsyncStorage.getItem("user");
-        if (!userData) return;
+  const loadStats = async () => {
+    try {
+      const userData = await AsyncStorage.getItem("user");
+      if (!userData) return;
 
-        const parsed = JSON.parse(userData);
-        const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
-        if (!userId) return;
+      const parsed = JSON.parse(userData);
+      const userId = parsed?.id || parsed?._id?.$oid || parsed?._id;
+      if (!userId) return;
 
-        // === DAILY: 10 ngày gần nhất ===
-        // === DAILY: 10 ngày gần nhất ===
-        const resDaily = await fetch(
-          `${API_URL}/healthdata/last-10-days/${userId}`
-        );
-        if (!resDaily.ok) throw new Error("Network error daily stats");
-        const dailyResponse = await resDaily.json();
+      const today = new Date();
 
-        // ĐẢM BẢO DÙNG dailyResponse.data
-        const dailyData = dailyResponse.success ? dailyResponse.data : [];
+      // --- Last 10 days --- (Today bên trái)
+      const resDaily = await fetch(`${API_URL}/healthdata/last-10-days/${userId}`);
+      if (!resDaily.ok) throw new Error("Network error daily stats");
+      const dailyResponse = await resDaily.json();
+      const dailyData: number[] = dailyResponse.success ? dailyResponse.data : [];
 
-        const today = new Date();
-        const last10Days: { date: string; kcal: number }[] = [];
-        for (let i = 9; i >= 0; i--) {
-          const d = new Date(today);
-          d.setDate(today.getDate() - i);
-          const dayNum = d.getDate();
-          const isoDate = d.toISOString().split("T")[0];
-          const record = dailyData.find((r: any) => r.date === isoDate);
-          const label = i === 0 ? `${dayNum} (Today)` : `${dayNum}`;
-          last10Days.push({
-            date: label,
-            kcal: record ? record.caloriesConsumed : 0,
-          });
-        }
-        setDailyStats(last10Days.reverse());
-
-        // === MONTHLY: Trung bình kcal/ngày theo nhóm 5 ngày ===
-        const resMonthly = await fetch(
-          `${API_URL}/healthdata/monthly/${userId}`
-        );
-        if (!resMonthly.ok) throw new Error("Network error monthly stats");
-        const monthlyResponse = await resMonthly.json();
-        const monthlyData = monthlyResponse.success ? monthlyResponse.data : [];
-
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
-        const daysInMonth = new Date(
-          currentYear,
-          currentMonth + 1,
-          0
-        ).getDate();
-
-        const monthlyArray: { range: string; kcal: number }[] = [];
-        for (let start = 1; start <= daysInMonth; start += 5) {
-          const end = Math.min(start + 4, daysInMonth);
-
-          const daysInRange = monthlyData.filter((r: any) => {
-            const d = new Date(r.date);
-            return (
-              d.getMonth() === currentMonth &&
-              d.getDate() >= start &&
-              d.getDate() <= end
-            );
-          });
-
-          const totalKcal = daysInRange.reduce(
-            (sum: number, r: any) => sum + r.caloriesConsumed,
-            0
-          );
-          const validDays = daysInRange.filter(
-            (r: any) => r.caloriesConsumed > 0
-          ).length;
-          const avgKcal = validDays > 0 ? Math.round(totalKcal / validDays) : 0;
-
-          monthlyArray.push({ range: `${start}-${end}`, kcal: avgKcal });
-        }
-        setMonthlyStats(monthlyArray);
-      } catch (err) {
-        console.error("Load stats error:", err);
+      const last10Days = [];
+      for (let i = 0; i < 10; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const dayNum = d.getDate();
+        const kcal = dailyData[i] ?? 0;
+        const label = i === 0 ? `${dayNum} (Today)` : `${dayNum}`;
+        last10Days.push({ date: label, kcal });
       }
-    };
+      setDailyStats(last10Days); // Không reverse → Today bên trái
 
-    loadStats();
-  }, []);
+      // --- Last 30 days --- (Today bên trái)
+      const resMonthly = await fetch(`${API_URL}/healthdata/monthly/${userId}`);
+      if (!resMonthly.ok) throw new Error("Network error monthly stats");
+      const monthlyResponse = await resMonthly.json();
+      const monthlyData: number[] = monthlyResponse.success ? monthlyResponse.data : [];
+
+      const last30Days = [];
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const dayNum = d.getDate();
+        const kcal = monthlyData[i] ?? 0;
+        const label = i === 0 ? `${dayNum} (Today)` : `${dayNum}`;
+        last30Days.push({ range: label, kcal });
+      }
+      setMonthlyStats(last30Days); // Today bên trái
+    } catch (err) {
+      console.error("Load stats error:", err);
+    }
+  };
+
+  loadStats();
+}, []);
+
+
+
 
   /**
    * 🔢 updateQuantity(mealName, qty)
@@ -828,13 +798,13 @@ export default function NutritionScreen() {
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <Svg width={activeTab === "daily" ? 950 : 1200} height={300}>
+              <Svg width={activeTab === "daily" ? 950 : 2000} height={300}>
                 {(() => {
                   const goal = goalCalories || 2000;
                   const chartHeight = 220;
                   const baseY = 260;
                   const barWidth = 40;
-                  const gap = activeTab === "daily" ? 50 : 70;
+                  const gap = activeTab === "daily" ? 50 : 25;
                   const startX = 80;
 
                   let labels: string[] = [];

@@ -12,13 +12,12 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation , useRoute} from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 
 const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
-
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 // === TYPE ===
 interface HealthData {
   healthScore: number;
@@ -71,12 +70,13 @@ export default function HomeScreen() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [blogLoading, setBlogLoading] = useState(true);
   const [healthScore, setHealthScore] = useState(100); // ← MỚI: Health Score tự tính
-
+const route = useRoute();
   // === ANIMATION ===
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 800,
+      delay: 500,
       useNativeDriver: true,
     }).start();
   }, []);
@@ -245,7 +245,7 @@ export default function HomeScreen() {
       return () => {
         isActive = false;
       };
-    }, [])
+    }, [navigation, route.params?.refresh])
   );
 
   // === TÍNH TOÁN overviewData ===
@@ -590,7 +590,7 @@ export default function HomeScreen() {
                         {blog.title}
                       </Text>
                       <Text style={styles.blogSubtitle} numberOfLines={2}>
-                        by {blog.authorName || "Unknown"} {blog.votes}
+                        by {blog.authorName || "Unknown"}  👍 {blog.votes}
                       </Text>
                     </View>
                   </TouchableOpacity>

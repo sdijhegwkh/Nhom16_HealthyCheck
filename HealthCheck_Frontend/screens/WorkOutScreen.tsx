@@ -19,7 +19,7 @@ import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
 const screenWidth = Dimensions.get("window").width;
 
 export default function WorkoutScreen() {
@@ -258,27 +258,45 @@ export default function WorkoutScreen() {
 
   // Chart
   const renderChartData = () => {
-    if (selectedTab === "today") {
-      return {
-        labels: ["Goal", "Actual"],
-        datasets: [{ data: [workoutGoal, totalToday], colors: [() => "#facc15", () => "#ef4444"] }],
-      };
-    } else if (selectedTab === "week") {
-      const displayData = [...weekData].reverse();
-      const displayLabels = [...weekLabels].reverse();
-      const labels = ["Goal", ...displayLabels];
-      const data = [workoutGoal, ...displayData];
-      const colors = data.map((_, i) => (i === 0 ? () => "#facc15" : () => "#ef4444"));
-      return { labels, datasets: [{ data, colors }] };
-    } else {
-      const labels = ["Goal", "1-5", "6-10", "11-15", "16-20", "21-25", "26-End"];
-      const data = [workoutGoal, ...monthData];
-      const colors = data.map((_, i) => i === 0 ? () => "#facc15" : () => "#ef4444");
-      return { labels, datasets: [{ data, colors }] };
-    }
-  };
+  if (selectedTab === "today") {
+    return {
+      labels: ["Goal", "Actual"],
+      datasets: [{ data: [workoutGoal, totalToday], colors: [() => "#facc15", () => "#ef4444"] }],
+    };
+  } else if (selectedTab === "week") {
+    const displayData = [...weekData].reverse();
+    const displayLabels = [...weekLabels].reverse();
+    const labels = ["Goal", ...displayLabels];
+    const data = [workoutGoal, ...displayData];
+    const colors = data.map((_, i) => (i === 0 ? () => "#facc15" : () => "#ef4444"));
+    return { labels, datasets: [{ data, colors }] };
+  } else {
+    // month
+    const today = new Date();
+    const labels: string[] = [];
+    const data: number[] = [];
 
-  const chartWidth = selectedTab === "today" ? screenWidth - 40 : selectedTab === "week" ? screenWidth * 1.6 : screenWidth * 2.2;
+    for (let i = 0; i < monthData.length; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+
+      const day = d.getDate();
+      labels.push(i === 0 ? "Today" : day.toString());
+      data.push(monthData[i]);
+    }
+
+    const colors = data.map(() => () => "#ef4444");
+
+    return { labels, datasets: [{ data, colors }] };
+  }
+};
+
+  const chartWidth =
+  selectedTab === "today"
+    ? screenWidth - 40
+    : selectedTab === "week"
+    ? Math.max(screenWidth * 1.6, 400)
+    : Math.max(screenWidth * 2.2, 2000); // 30 cột, đủ rộng
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
