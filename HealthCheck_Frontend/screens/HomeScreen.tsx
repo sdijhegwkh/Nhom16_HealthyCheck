@@ -17,7 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 
 const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.4:5000";
+  process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 // === TYPE ===
 interface HealthData {
   healthScore: number;
