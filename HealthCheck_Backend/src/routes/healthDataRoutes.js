@@ -1,5 +1,5 @@
     import express from "express";
-    import {updateStepData, getTodayHealthData, getHealthStats, getHealthDataByUser, updateSleepSchedule, getTodaySleepSessions, getSleepStats, updateWorkoutSchedule, getTodayWorkoutSessions, getWorkoutStats, updateWaterConsumed , getWaterStats,updateNutrition , getTodayNutrition, getLast10DaysNutrition, getMonthlyNutrition, getTotalHealthData, getWeeklyReport} from "../controllers/healthDataController.js";
+    import {updateStepData, getTodayHealthData, getHealthStats, getHealthDataByUser, updateSleepSchedule, getTodaySleepSessions, getSleepStats, updateWorkoutSchedule, getTodayWorkoutSessions, getWorkoutStats, updateWaterConsumed , getWaterStats,updateNutrition , getTodayNutrition, getLast10DaysNutrition, getMonthlyNutrition, getTotalHealthData, updateHealthScore, getWeeklyReport} from "../controllers/healthDataController.js";
     const router = express.Router();
 
     router.post("/update-steps", updateStepData); // cap nhat khi thoat screen
@@ -20,4 +20,5 @@
     router.get("/monthly/:userId", getMonthlyNutrition);
     router.get("/totalhealthdata/:userId", getTotalHealthData);
     router.get("/weekly-report/:userId", getWeeklyReport);
+    router.put("/update-score/:userId", updateHealthScore);
     export default router; 

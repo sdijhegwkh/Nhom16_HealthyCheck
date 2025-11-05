@@ -16,7 +16,8 @@ import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL || "https://nhom16-healthycheck.onrender.com";
 
 // === TYPE ===
 interface HealthData {
@@ -82,58 +83,62 @@ export default function HomeScreen() {
 
   // === TÍNH HEALTH SCORE TỪ WEEKLY DATA ===
   // === TÍNH HEALTH SCORE THEO BẢNG MỚI ===
-const calculateHealthScore = (weekly: typeof weeklyData): number => {
-  if (!weekly) return 100;
+  const calculateHealthScore = (weekly: typeof weeklyData): number => {
+    if (!weekly) return 100;
 
-  let score = 100;
+    let score = 100;
 
-  const GOAL_STEPS = 56000;
-  const GOAL_SLEEP_HOURS = 56;
-  const GOAL_WATER_ML = 14000;
-  const GOAL_WORKOUT_MIN = 180;
-  const GOAL_CALORIES = 18000;
+    const GOAL_STEPS = 56000;
+    const GOAL_SLEEP_HOURS = 56;
+    const GOAL_WATER_ML = 14000;
+    const GOAL_WORKOUT_MIN = 180;
+    const GOAL_CALORIES = 18000;
 
-  const actualSteps = weekly.steps;
-  const actualSleepHours = weekly.sleepHours + weekly.sleepMinutes / 60;
-  const actualWaterMl = weekly.waterMl;
-  const actualWorkoutMin = weekly.workoutMin;
-  const actualCalories = weekly.calories || 0;
+    const actualSteps = weekly.steps;
+    const actualSleepHours = weekly.sleepHours + weekly.sleepMinutes / 60;
+    const actualWaterMl = weekly.waterMl;
+    const actualWorkoutMin = weekly.workoutMin;
+    const actualCalories = weekly.calories || 0;
 
-  const deductPoints = (actual: number, goal: number, isHigherBetter: boolean = true) => {
-    const diff = actual - goal;
-    const absDiff = Math.abs(diff);
-    const percentDiff = goal > 0 ? (absDiff / goal) * 100 : 0;
+    const deductPoints = (
+      actual: number,
+      goal: number,
+      isHigherBetter: boolean = true
+    ) => {
+      const diff = actual - goal;
+      const absDiff = Math.abs(diff);
+      const percentDiff = goal > 0 ? (absDiff / goal) * 100 : 0;
 
-    if (percentDiff <= 10) return 0;
+      if (percentDiff <= 10) return 0;
 
-    if (isHigherBetter) {
-      if (diff < 0) {
-        // Thiếu
+      if (isHigherBetter) {
+        if (diff < 0) {
+          // Thiếu
+          if (percentDiff <= 20) return -5;
+          if (percentDiff <= 30) return -10;
+          return -20;
+        } else {
+          // Dư
+          if (percentDiff <= 30) return 0;
+          if (percentDiff <= 50) return -5;
+          return -10;
+        }
+      } else {
+        // Calories: càng gần càng tốt
         if (percentDiff <= 20) return -5;
         if (percentDiff <= 30) return -10;
         return -20;
-      } else {
-        // Dư
-        if (percentDiff <= 30) return 0;
-        if (percentDiff <= 50) return -5;
-        return -10;
       }
-    } else {
-      // Calories: càng gần càng tốt
-      if (percentDiff <= 20) return -5;
-      if (percentDiff <= 30) return -10;
-      return -20;
-    }
+    };
+
+    score += deductPoints(actualSteps, GOAL_STEPS, true);
+    score += deductPoints(actualSleepHours, GOAL_SLEEP_HOURS, true);
+    score += deductPoints(actualWaterMl, GOAL_WATER_ML, true);
+    score += deductPoints(actualWorkoutMin, GOAL_WORKOUT_MIN, true);
+    score += deductPoints(actualCalories, GOAL_CALORIES, false);
+
+    return Math.max(0, score);
   };
-
-  score += deductPoints(actualSteps, GOAL_STEPS, true);
-  score += deductPoints(actualSleepHours, GOAL_SLEEP_HOURS, true);
-  score += deductPoints(actualWaterMl, GOAL_WATER_ML, true);
-  score += deductPoints(actualWorkoutMin, GOAL_WORKOUT_MIN, true);
-  score += deductPoints(actualCalories, GOAL_CALORIES, false);
-
-  return Math.max(0, score);
-};
 
   // === CẬP NHẬT HEALTH SCORE KHI CÓ WEEKLY DATA ===
   useEffect(() => {
@@ -188,8 +193,7 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
           if (resUser.ok) {
             const userResult = await resUser.json();
             const history = userResult?.bodyStatsHistory || [];
-            if (history.length > 0)
-              newBmi = history.at(-1).bmi.toFixed(1);
+            if (history.length > 0) newBmi = history.at(-1).bmi.toFixed(1);
           }
 
           // Weekly Report
@@ -197,6 +201,21 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
             const weeklyResult = await resWeekly.json();
             if (weeklyResult.success && weeklyResult.data)
               newWeeklyData = weeklyResult.data;
+          }
+          if (isActive && newWeeklyData && userId) {
+            const score = calculateHealthScore(newWeeklyData);
+            setHealthScore(score);
+
+            fetch(`${API_URL}/healthdata/update-score/${userId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ healthScore: score }),
+            })
+              .then((res) => res.json())
+              .then((data) => {
+                if (data.success) console.log("Health Score saved:", score);
+              })
+              .catch((err) => console.warn("Save failed:", err));
           }
 
           // Blogs
@@ -233,12 +252,48 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
   const overviewData: OverviewItem[] = useMemo(() => {
     if (!healthData || loading) {
       return [
-        { label: "Steps", value: "—", color: "#c084fc", icon: Ionicons, iconName: "walk-outline" },
-        { label: "Sleep", value: "—", color: "#8b5cf6", icon: Ionicons, iconName: "moon-outline" },
-        { label: "Water", value: "—", color: "#38bdf8", icon: Ionicons, iconName: "water-outline" },
-        { label: "Nutrition", value: "—", color: "#4ade80", icon: Ionicons, iconName: "fast-food-outline" },
-        { label: "BMI", value: "—", color: "#facc15", icon: Ionicons, iconName: "body-outline" },
-        { label: "Workout", value: "—", color: "#f87171", icon: Ionicons, iconName: "barbell-outline" },
+        {
+          label: "Steps",
+          value: "—",
+          color: "#c084fc",
+          icon: Ionicons,
+          iconName: "walk-outline",
+        },
+        {
+          label: "Sleep",
+          value: "—",
+          color: "#8b5cf6",
+          icon: Ionicons,
+          iconName: "moon-outline",
+        },
+        {
+          label: "Water",
+          value: "—",
+          color: "#38bdf8",
+          icon: Ionicons,
+          iconName: "water-outline",
+        },
+        {
+          label: "Nutrition",
+          value: "—",
+          color: "#4ade80",
+          icon: Ionicons,
+          iconName: "fast-food-outline",
+        },
+        {
+          label: "BMI",
+          value: "—",
+          color: "#facc15",
+          icon: Ionicons,
+          iconName: "body-outline",
+        },
+        {
+          label: "Workout",
+          value: "—",
+          color: "#f87171",
+          icon: Ionicons,
+          iconName: "barbell-outline",
+        },
       ];
     }
 
@@ -292,11 +347,41 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
   const weeklyReport: OverviewItem[] = useMemo(() => {
     if (!weeklyData || loading) {
       return [
-        { label: "Steps", value: "—", color: "#2563eb", icon: MaterialCommunityIcons, iconName: "shoe-print" },
-        { label: "Workout", value: "—", color: "#f87171", icon: Ionicons, iconName: "fitness-outline" },
-        { label: "Water", value: "—", color: "#3b82f6", icon: Ionicons, iconName: "water-outline" },
-        { label: "Sleep", value: "—", color: "#0ea5e9", icon: Ionicons, iconName: "moon" },
-        { label: "Calories", value: "—", color: "#f97316", icon: Ionicons, iconName: "flame-outline" },
+        {
+          label: "Steps",
+          value: "—",
+          color: "#2563eb",
+          icon: MaterialCommunityIcons,
+          iconName: "shoe-print",
+        },
+        {
+          label: "Workout",
+          value: "—",
+          color: "#f87171",
+          icon: Ionicons,
+          iconName: "fitness-outline",
+        },
+        {
+          label: "Water",
+          value: "—",
+          color: "#3b82f6",
+          icon: Ionicons,
+          iconName: "water-outline",
+        },
+        {
+          label: "Sleep",
+          value: "—",
+          color: "#0ea5e9",
+          icon: Ionicons,
+          iconName: "moon",
+        },
+        {
+          label: "Calories",
+          value: "—",
+          color: "#f97316",
+          icon: Ionicons,
+          iconName: "flame-outline",
+        },
       ];
     }
 
@@ -310,7 +395,9 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
       },
       {
         label: "Workout",
-        value: `${Math.floor(weeklyData.workoutMin / 60)}h ${weeklyData.workoutMin % 60}min`,
+        value: `${Math.floor(weeklyData.workoutMin / 60)}h ${
+          weeklyData.workoutMin % 60
+        }min`,
         color: "#f87171",
         icon: Ionicons,
         iconName: "fitness-outline",
@@ -328,13 +415,6 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
         color: "#0ea5e9",
         icon: Ionicons,
         iconName: "moon",
-      },
-      {
-        label: "Calories",
-        value: `${weeklyData.calories?.toLocaleString() || 0} kcal`,
-        color: "#f97316",
-        icon: Ionicons,
-        iconName: "flame-outline",
       },
     ];
   }, [weeklyData, loading]);
@@ -377,7 +457,8 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
 
         {/* Overview Title */}
         <Text style={styles.overviewTitle}>
-          Overview <Ionicons name="stats-chart-outline" size={26} color="#2563eb" />
+          Overview{" "}
+          <Ionicons name="stats-chart-outline" size={26} color="#2563eb" />
         </Text>
 
         {/* Health Score – DÙNG HEALTHSCORE TỰ TÍNH */}
@@ -386,10 +467,26 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
             <Text style={styles.healthTitle}>Health Score</Text>
             <Text style={styles.healthDesc}>
               Based on your weekly health tracking, your score is{" "}
-              <Text style={{ fontWeight: "bold" }}>{healthScore}</Text> and considered{" "}
-              <Text style={{ fontWeight: "bold", color: healthScore >= 80 ? "#10b981" : healthScore >= 50 ? "#f59e0b" : "#ef4444" }}>
-                {healthScore >= 80 ? "excellent" : healthScore >= 50 ? "fair" : "needs improvement"}
-              </Text>.
+              <Text style={{ fontWeight: "bold" }}>{healthScore}</Text> and
+              considered{" "}
+              <Text
+                style={{
+                  fontWeight: "bold",
+                  color:
+                    healthScore >= 80
+                      ? "#10b981"
+                      : healthScore >= 50
+                      ? "#f59e0b"
+                      : "#ef4444",
+                }}
+              >
+                {healthScore >= 80
+                  ? "excellent"
+                  : healthScore >= 50
+                  ? "fair"
+                  : "needs improvement"}
+              </Text>
+              .
             </Text>
           </View>
           <View style={styles.scoreBadge}>
@@ -435,17 +532,31 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
 
         {/* === BLOGS === */}
         <View style={styles.section}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <Text style={styles.sectionTitle}>Health Blogs</Text>
             <TouchableOpacity onPress={() => navigation.navigate("Blog")}>
-              <Text style={{ color: "#2563eb", fontWeight: "600" }}>Show All</Text>
+              <Text style={{ color: "#2563eb", fontWeight: "600" }}>
+                Show All
+              </Text>
             </TouchableOpacity>
           </View>
 
           {blogLoading ? (
-            <ActivityIndicator size="small" color="#2563eb" style={{ marginTop: 10 }} />
+            <ActivityIndicator
+              size="small"
+              color="#2563eb"
+              style={{ marginTop: 10 }}
+            />
           ) : blogs.length === 0 ? (
-            <Text style={{ color: "#555", marginTop: 10 }}>No blogs available.</Text>
+            <Text style={{ color: "#555", marginTop: 10 }}>
+              No blogs available.
+            </Text>
           ) : (
             <ScrollView
               horizontal
@@ -453,9 +564,10 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
               contentContainerStyle={{ paddingRight: 20 }}
             >
               {blogs.map((blog) => {
-                const blogId = typeof blog._id === "string"
-                  ? blog._id
-                  : blog._id?.$oid || String(blog._id);
+                const blogId =
+                  typeof blog._id === "string"
+                    ? blog._id
+                    : blog._id?.$oid || String(blog._id);
 
                 return (
                   <TouchableOpacity
@@ -466,7 +578,9 @@ const calculateHealthScore = (weekly: typeof weeklyData): number => {
                   >
                     <Image
                       source={{
-                        uri: blog.imageUrl || "https://via.placeholder.com/300x200?text=No+Image",
+                        uri:
+                          blog.imageUrl ||
+                          "https://via.placeholder.com/300x200?text=No+Image",
                       }}
                       style={styles.blogImage}
                       resizeMode="cover"
@@ -558,8 +672,17 @@ const styles = StyleSheet.create({
 
   // Weekly Report
   section: { marginTop: 25, paddingHorizontal: 20 },
-  sectionTitle: { fontSize: 20, fontWeight: "700", marginBottom: 15, color: "#111" },
-  weeklyContainer: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 15,
+    color: "#111",
+  },
+  weeklyContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
   weekCard: {
     width: "47%",
     backgroundColor: "#f8fafc",
@@ -581,8 +704,18 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   blogImage: { width: "100%", height: 120 },
-  blogTitle: { fontSize: 16, fontWeight: "700", paddingHorizontal: 10, marginTop: 8 },
-  blogSubtitle: { fontSize: 14, color: "#555", paddingHorizontal: 10, marginBottom: 10 },
+  blogTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    paddingHorizontal: 10,
+    marginTop: 8,
+  },
+  blogSubtitle: {
+    fontSize: 14,
+    color: "#555",
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
 
   // Loading
   loadingContainer: {
