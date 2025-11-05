@@ -365,35 +365,38 @@ export async function getSleepStats(req, res) {
       return res.status(400).json({ success: false, message: "Invalid params" });
     }
 
-    // === TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM (CHÍNH XÁC) ===
-    const nowUTC = new Date();
-    const vietnamOffsetMs = 7 * 60 * 60 * 1000;
-    const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
+    // === LẤY THỜI GIAN HIỆN TẠI THEO MÚI GIỜ VIỆT NAM ===
+    const nowVN = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" })
+    );
+    nowVN.setHours(0, 0, 0, 0);
 
-    const vnYear = nowVN.getUTCFullYear();
-    const vnMonth = nowVN.getUTCMonth();
-    const vnDate = nowVN.getUTCDate();
+    const vnYear = nowVN.getFullYear();
+    const vnMonth = nowVN.getMonth();
+    const vnDate = nowVN.getDate();
 
-    const todayKey = `${vnYear}-${String(vnMonth + 1).padStart(2, '0')}-${String(vnDate).padStart(2, '0')}`;
+    const todayKey = `${vnYear}-${String(vnMonth + 1).padStart(2, "0")}-${String(
+      vnDate
+    ).padStart(2, "0")}`;
 
-    // === TÍNH KHOẢNG NGÀY ===
-    let startDateUTC, endDateUTC;
+    console.log("🇻🇳 Today VN:", todayKey);
 
-    if (range === "week") {
-      const todayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
-      startDateUTC = new Date(todayUTC);
-      startDateUTC.setUTCDate(startDateUTC.getUTCDate() - 6);
-      endDateUTC = new Date(todayUTC);
-      endDateUTC.setUTCDate(endDateUTC.getUTCDate() + 1);
-    } else {
-      const todayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
-      startDateUTC = new Date(todayUTC);
-      startDateUTC.setUTCDate(startDateUTC.getUTCDate() - 29);
-      endDateUTC = new Date(todayUTC);
-      endDateUTC.setUTCDate(endDateUTC.getUTCDate() + 1);
-    }
+    // === TÍNH KHOẢNG NGÀY (theo giờ VN) ===
+    const startDateVN = new Date(nowVN);
+    if (range === "week") startDateVN.setDate(startDateVN.getDate() - 6);
+    else startDateVN.setDate(startDateVN.getDate() - 29);
 
-    // === LẤY DỮ LIỆU ===
+    // Chuyển mốc thời gian VN thành UTC để truy vấn DB
+    const startDateUTC = new Date(startDateVN.getTime() - 7 * 60 * 60 * 1000);
+    const endDateUTC = new Date(nowVN.getTime() + 24 * 60 * 60 * 1000 - 7 * 60 * 60 * 1000);
+
+    console.log("🕒 Query range UTC:", {
+      start: startDateUTC.toISOString(),
+      end: endDateUTC.toISOString(),
+      range,
+    });
+
+    // === TRUY VẤN DB ===
     const data = await db
       .collection("healthdata")
       .find({
@@ -403,19 +406,32 @@ export async function getSleepStats(req, res) {
       .sort({ date: 1 })
       .toArray();
 
-    // === NHÓM THEO NGÀY THỨC DẬY ===
+    console.log(`📊 Found ${data.length} records`);
+
+    // === NHÓM THEO NGÀY THỨC DẬY (VN TIMEZONE) ===
     const recordsByVNDate = {};
 
-    data.forEach(record => {
+    data.forEach((record) => {
       if (!record.sleep?.sessions?.length) return;
-
       const lastSession = record.sleep.sessions[record.sleep.sessions.length - 1];
-      const wakeStr = lastSession.wakeTime;
-      const wakeDate = new Date(`${wakeStr} GMT+0700`);
+      if (!lastSession?.wakeTime) return;
 
-      const key = `${wakeDate.getFullYear()}-${String(wakeDate.getMonth() + 1).padStart(2, '0')}-${String(wakeDate.getDate()).padStart(2, '0')}`;
-      recordsByVNDate[key] = (recordsByVNDate[key] || 0) + (record.sleep.totalSleepHr || 0);
+      // Chuyển wakeTime về đối tượng Date theo giờ VN
+      const wakeDateVN = new Date(
+        new Date(lastSession.wakeTime).toLocaleString("en-US", {
+          timeZone: "Asia/Ho_Chi_Minh",
+        })
+      );
+
+      const key = `${wakeDateVN.getFullYear()}-${String(
+        wakeDateVN.getMonth() + 1
+      ).padStart(2, "0")}-${String(wakeDateVN.getDate()).padStart(2, "0")}`;
+
+      recordsByVNDate[key] =
+        (recordsByVNDate[key] || 0) + (record.sleep.totalSleepHr || 0);
     });
+
+    console.log("🗓️ Grouped by VN date:", recordsByVNDate);
 
     // === TUẦN ===
     if (range === "week") {
@@ -423,15 +439,18 @@ export async function getSleepStats(req, res) {
       const weekLabels = [];
 
       for (let i = 6; i >= 0; i--) {
-        const targetUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
-        targetUTC.setUTCDate(targetUTC.getUTCDate() - i);
+        const target = new Date(nowVN);
+        target.setDate(nowVN.getDate() - i);
 
-        const key = `${targetUTC.getUTCFullYear()}-${String(targetUTC.getUTCMonth() + 1).padStart(2, '0')}-${String(targetUTC.getUTCDate()).padStart(2, '0')}`;
+        const key = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}-${String(target.getDate()).padStart(2, "0")}`;
+
         const sleepHr = recordsByVNDate[key] || 0;
-
         weekData.push(sleepHr);
 
-        const dayStr = targetUTC.getUTCDate().toString();
+        const dayStr = target.getDate().toString();
         const label = key === todayKey ? `${dayStr} (Today)` : dayStr;
         weekLabels.push(label);
       }
@@ -445,35 +464,34 @@ export async function getSleepStats(req, res) {
     }
 
     // === THÁNG ===
-    // === THÁNG ===
-if (range === "month") {
-  const monthData = []; // bỏ : number[]
+    if (range === "month") {
+      const monthData = [];
 
-  for (let i = 29; i >= 0; i--) {
-    const targetUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
-    targetUTC.setUTCDate(targetUTC.getUTCDate() - i);
+      for (let i = 29; i >= 0; i--) {
+        const target = new Date(nowVN);
+        target.setDate(nowVN.getDate() - i);
 
-    const key = `${targetUTC.getUTCFullYear()}-${String(
-      targetUTC.getUTCMonth() + 1
-    ).padStart(2, "0")}-${String(targetUTC.getUTCDate()).padStart(2, "0")}`;
+        const key = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}-${String(target.getDate()).padStart(2, "0")}`;
 
-    const sleepHr = recordsByVNDate[key] || 0;
-    monthData.push(sleepHr);
-  }
+        const sleepHr = recordsByVNDate[key] || 0;
+        monthData.push(sleepHr);
+      }
 
-  return res.json({
-    success: true,
-    range: "month",
-    data: monthData,
-  });
-}
-
-
+      return res.json({
+        success: true,
+        range: "month",
+        data: monthData,
+      });
+    }
   } catch (err) {
-    console.error("getSleepStats error:", err);
+    console.error("❌ getSleepStats error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 }
+
 // POST /healthdata/workout/schedule/:userId
 export const updateWorkoutSchedule = async (req, res) => {
   try {
