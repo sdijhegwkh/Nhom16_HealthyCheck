@@ -204,6 +204,17 @@ export default function WaterScreen() {
     loadWaterStats();
     setShowStats(true);
   };
+  const today = new Date();
+const labels = [];
+for (let i = 6; i >= 0; i--) {
+  const d = new Date();
+  d.setDate(today.getDate() - i);
+  const day = d.getDate().toString().padStart(2, "0");
+  const month = (d.getMonth() + 1).toString().padStart(2, "0");
+  labels.push(`${day}/${month}`);
+}
+const displayLabels = [...labels].reverse();
+const displayData = [...waterStats];
 
   // Sóng nước
   const tankHeight = 300;
@@ -263,10 +274,11 @@ export default function WaterScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20 }}
         >
+        
           <BarChart
             data={{
-              labels: waterLabels,
-              datasets: [{ data: waterStats }]
+              labels: displayLabels,
+    datasets: [{ data: displayData }]
             }}
             width={520} // ĐỦ ĐỂ HIỆN 7 CỘT + TRỤC Y
             height={300}

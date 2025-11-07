@@ -261,35 +261,55 @@ export default function WorkoutScreen() {
   if (selectedTab === "today") {
     return {
       labels: ["Goal", "Actual"],
-      datasets: [{ data: [workoutGoal, totalToday], colors: [() => "#facc15", () => "#ef4444"] }],
+      datasets: [
+        { data: [workoutGoal, totalToday], colors: [() => "#facc15", () => "#ef4444"] },
+      ],
     };
   } else if (selectedTab === "week") {
+    // ✅ đảo ngược data để ngày mới nhất nằm đầu
     const displayData = [...weekData].reverse();
     const displayLabels = [...weekLabels].reverse();
-    const labels = ["Goal", ...displayLabels];
-    const data = [workoutGoal, ...displayData];
-    const colors = data.map((_, i) => (i === 0 ? () => "#facc15" : () => "#ef4444"));
-    return { labels, datasets: [{ data, colors }] };
+
+    return {
+      labels: displayLabels, // ví dụ 7/11, 6/11, 5/11, ...
+      datasets: [
+        {
+          data: displayData,
+          colors: displayData.map(() => () => "#ef4444"),
+        },
+      ],
+    };
   } else {
-    // month
+    // ✅ MONTH
     const today = new Date();
+
+    // Giả định monthData.length = số ngày trong tháng (ví dụ 30)
     const labels: string[] = [];
     const data: number[] = [];
 
+    // Duyệt ngược để ngày mới nhất nằm đầu
     for (let i = 0; i < monthData.length; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
 
       const day = d.getDate();
-      labels.push(i === 0 ? "Today" : day.toString());
+      const month = d.getMonth() + 1;
+      labels.push(`${day}/${month}`);
       data.push(monthData[i]);
     }
 
-    const colors = data.map(() => () => "#ef4444");
-
-    return { labels, datasets: [{ data, colors }] };
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          colors: data.map(() => () => "#ef4444"),
+        },
+      ],
+    };
   }
 };
+
 
   const chartWidth =
   selectedTab === "today"

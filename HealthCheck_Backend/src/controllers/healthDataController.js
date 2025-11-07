@@ -676,7 +676,7 @@ export const getWorkoutStats = async (req, res) => {
 
         weekData.push(duration);
         const dayStr = targetUTC.getUTCDate().toString();
-        weekLabels.push(key === todayKey ? `${dayStr} (hôm nay)` : dayStr);
+        weekLabels.push(key === todayKey ? `${dayStr}` : dayStr);
       }
 
       return res.json({
