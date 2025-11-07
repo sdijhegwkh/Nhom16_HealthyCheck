@@ -799,126 +799,146 @@ export default function NutritionScreen() {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <Svg width={activeTab === "daily" ? 950 : 2000} height={300}>
-                {(() => {
-                  const goal = goalCalories || 2000;
-                  const chartHeight = 220;
-                  const baseY = 260;
-                  const barWidth = 40;
-                  const gap = activeTab === "daily" ? 50 : 25;
-                  const startX = 80;
+              {(() => {
+  const goal = goalCalories || 2000;
+  const chartHeight = 220;
+  const baseY = 260;
+  const barWidth = 40;
+  const gap = activeTab === "daily" ? 50 : 25;
+  const startX = 80;
 
-                  let labels: string[] = [];
-                  let values: number[] = [];
+  let labels = [];
+  let values = [];
 
-                  if (activeTab === "daily") {
-                    labels = dailyStats.map((d) => d.date);
-                    values = dailyStats.map((d) => d.kcal);
-                  } else {
-                    labels = monthlyStats.map((m) => m.range);
-                    values = monthlyStats.map((m) => m.kcal);
-                  }
+  if (activeTab === "daily") {
+    // Dữ liệu daily từ backend (10 ngày gần nhất)
+    values = dailyStats.map((d) => d.kcal);
 
-                  const maxVal = Math.max(...values, goal, 100) * 1.15;
-                  const goalY = baseY - (goal / maxVal) * chartHeight;
+    // Tạo nhãn theo ngày hiện tại - 9 ngày trước
+    const today = new Date();
+    for (let i = 9; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const day = d.getDate().toString().padStart(2, "0");
+      const month = (d.getMonth() + 1).toString().padStart(2, "0");
+      labels.push(`${day}/${month}`);
+    }
 
-                  const yLabelCount = 5;
-                  const yLabels = Array.from({ length: yLabelCount }, (_, i) =>
-                    Math.round((maxVal / (yLabelCount - 1)) * i)
-                  );
+    // Đảo nhãn (để hôm nay nằm bên trái)
+    labels = [...labels].reverse();
+  } else {
+    // Monthly stats
+    values = monthlyStats.map((m) => m.kcal);
 
-                  return (
-                    <>
-                      {/* Trục Y + lưới ngang */}
-                      {yLabels.map((val) => {
-                        const y = baseY - (val / maxVal) * chartHeight;
-                        return (
-                          <React.Fragment key={val}>
-                            <TextSVG
-                              x={30}
-                              y={y + 4}
-                              fontSize="11"
-                              fill="#4b5563"
-                            >
-                              {val}
-                            </TextSVG>
-                            <Line
-                              x1={60}
-                              y1={y}
-                              x2={activeTab === "daily" ? 950 : 1250}
-                              y2={y}
-                              stroke="#e5e7eb"
-                              strokeDasharray="4,4"
-                              strokeWidth={1}
-                            />
-                          </React.Fragment>
-                        );
-                      })}
+    // 30 ngày gần nhất
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const day = d.getDate().toString().padStart(2, "0");
+      const month = (d.getMonth() + 1).toString().padStart(2, "0");
+      labels.push(`${day}/${month}`);
+    }
 
-                      {/* Đường mục tiêu */}
-                      <Line
-                        x1={60}
-                        y1={goalY}
-                        x2={activeTab === "daily" ? 850 : 1150}
-                        y2={goalY}
-                        stroke="#94a3b8"
-                        strokeDasharray="6,4"
-                        strokeWidth={2}
-                      />
-                      <TextSVG
-                        x={48}
-                        y={goalY + 5}
-                        fontSize="14"
-                        fill="#22c55e"
-                        fontWeight="bold"
-                      >
-                        Goal
-                      </TextSVG>
+    labels = [...labels].reverse();
+  }
 
-                      {/* Cột dữ liệu */}
-                      {values.map((val, i) => {
-                        const x = startX + i * (barWidth + gap);
-                        const h = (val / maxVal) * chartHeight;
-                        const y = baseY - h;
-                        const reachedGoal = val >= goal;
+  const maxVal = Math.max(...values, goal, 100) * 1.15;
+  const goalY = baseY - (goal / maxVal) * chartHeight;
+  const yLabelCount = 5;
+  const yLabels = Array.from({ length: yLabelCount }, (_, i) =>
+    Math.round((maxVal / (yLabelCount - 1)) * i)
+  );
 
-                        return (
-                          <React.Fragment key={i}>
-                            <Rect
-                              x={x}
-                              y={y}
-                              width={barWidth}
-                              height={h || 1}
-                              rx={6}
-                              fill={reachedGoal ? "#16a34a" : "#86efac"}
-                            />
-                            {val > 0 && (
-                              <TextSVG
-                                x={x + barWidth / 2}
-                                y={y - 6}
-                                fontSize="12"
-                                fontWeight="bold"
-                                fill="#000"
-                                textAnchor="middle"
-                              >
-                                {val}
-                              </TextSVG>
-                            )}
-                            <TextSVG
-                              x={x + barWidth / 2}
-                              y={baseY + 18}
-                              fontSize="11"
-                              fill="#374151"
-                              textAnchor="middle"
-                              fontWeight="600"
-                            >
-                              {labels[i]}
-                            </TextSVG>
-                          </React.Fragment>
-                        );
-                      })}
-                    </>
-                  );
-                })()}
+  return (
+    <>
+      {/* Trục Y + lưới ngang */}
+      {yLabels.map((val) => {
+        const y = baseY - (val / maxVal) * chartHeight;
+        return (
+          <React.Fragment key={val}>
+            <TextSVG x={30} y={y + 4} fontSize="11" fill="#4b5563">
+              {val}
+            </TextSVG>
+            <Line
+              x1={60}
+              y1={y}
+              x2={activeTab === "daily" ? 950 : 1250}
+              y2={y}
+              stroke="#e5e7eb"
+              strokeDasharray="4,4"
+              strokeWidth={1}
+            />
+          </React.Fragment>
+        );
+      })}
+
+      {/* Đường mục tiêu */}
+      <Line
+        x1={60}
+        y1={goalY}
+        x2={activeTab === "daily" ? 850 : 1150}
+        y2={goalY}
+        stroke="#94a3b8"
+        strokeDasharray="6,4"
+        strokeWidth={2}
+      />
+      <TextSVG
+        x={48}
+        y={goalY + 5}
+        fontSize="14"
+        fill="#22c55e"
+        fontWeight="bold"
+      >
+        Goal
+      </TextSVG>
+
+      {/* Cột dữ liệu */}
+      {values.map((val, i) => {
+        const x = startX + i * (barWidth + gap);
+        const h = (val / maxVal) * chartHeight;
+        const y = baseY - h;
+        const reachedGoal = val >= goal;
+
+        return (
+          <React.Fragment key={i}>
+            <Rect
+              x={x}
+              y={y}
+              width={barWidth}
+              height={h || 1}
+              rx={6}
+              fill={reachedGoal ? "#16a34a" : "#86efac"}
+            />
+            {val > 0 && (
+              <TextSVG
+                x={x + barWidth / 2}
+                y={y - 6}
+                fontSize="12"
+                fontWeight="bold"
+                fill="#000"
+                textAnchor="middle"
+              >
+                {val}
+              </TextSVG>
+            )}
+            <TextSVG
+              x={x + barWidth / 2}
+              y={baseY + 18}
+              fontSize="11"
+              fill="#374151"
+              textAnchor="middle"
+              fontWeight="600"
+            >
+              {labels[i]}
+            </TextSVG>
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+})()}
+
               </Svg>
             </ScrollView>
 

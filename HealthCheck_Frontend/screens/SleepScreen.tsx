@@ -360,7 +360,7 @@ const renderChartData = () => {
     ? parseFloat(sleepDuration.split("h")[0]) +
       parseInt(sleepDuration.split(" ")[1]) / 60
     : 0;
-
+  
   const chartConfig = {
     backgroundGradientFrom: "#fff",
     backgroundGradientTo: "#fff",
@@ -381,16 +381,37 @@ const renderChartData = () => {
       ],
     };
   } else if (selectedTab === "week") {
-    const displayData = [...weekData].reverse();
-    const displayLabels = [...weekLabels].reverse();
-    const labels = ["Goal", ...displayLabels];
-    const data = [sleepGoal, ...displayData];
-    const colors = data.map((_, i) =>
-      i === 0 ? () => "#facc15" : () => "#7c3aed"
-    );
-    return { labels, datasets: [{ data, colors }] };
+    const today = new Date();
+  const todayVN = new Date(today.getTime() + 7 * 60 * 60 * 1000);
+  const vnYear = todayVN.getUTCFullYear();
+  const vnMonth = todayVN.getUTCMonth();
+  const vnDate = todayVN.getUTCDate();
+
+  const displayData: number[] = [];
+  const displayLabels: string[] = [];
+
+  // weekData[0] → cũ nhất, weekData[6] → hôm nay
+  // => duyệt ngược để hôm nay nằm đầu
+  for (let i = 6; i >= 0; i--) {
+    displayData.push(weekData[i] || 0);
+
+    const targetDate = new Date(Date.UTC(vnYear, vnMonth, vnDate));
+    targetDate.setUTCDate(vnDate - (6 - i));
+
+    const day = targetDate.getUTCDate().toString().padStart(2, "0");
+    const month = (targetDate.getUTCMonth() + 1).toString().padStart(2, "0");
+    displayLabels.push(`${day}/${month}`);
+  }
+
+  const labels = ["Goal", ...displayLabels];
+  const data = [sleepGoal, ...displayData];
+  const colors = data.map((_, i) =>
+    i === 0 ? () => "#facc15" : () => "#7c3aed"
+  );
+
+  return { labels, datasets: [{ data, colors }] };
   } else {
-  // Tab "month": 30 ngày gần nhất, today đầu tiên bên trái
+  // Tab "month": 30 ngày gần nhất, hôm nay nằm bên trái
   const today = new Date();
   const todayVN = new Date(today.getTime() + 7 * 60 * 60 * 1000);
   const vnYear = todayVN.getUTCFullYear();
@@ -400,17 +421,17 @@ const renderChartData = () => {
   const displayData: number[] = [];
   const displayLabels: string[] = [];
 
-  // monthData[0] → 30 ngày trước, monthData[29] → hôm nay
+  // monthData[0] → cũ nhất, monthData[29] → hôm nay
+  // => duyệt ngược để hôm nay nằm đầu
   for (let i = 29; i >= 0; i--) {
     displayData.push(monthData[i] || 0);
 
     const targetDate = new Date(Date.UTC(vnYear, vnMonth, vnDate));
-    targetDate.setUTCDate(vnDate - (29 - i)); // 29 - i ngày trước
-    const label =
-      i === 29
-        ? `Today(${targetDate.getUTCDate()})`
-        : `${targetDate.getUTCDate()}`;
-    displayLabels.push(label);
+    targetDate.setUTCDate(vnDate - (29 - i)); // ngày cụ thể
+
+    const day = targetDate.getUTCDate().toString().padStart(2, "0");
+    const month = (targetDate.getUTCMonth() + 1).toString().padStart(2, "0");
+    displayLabels.push(`${day}/${month}`);
   }
 
   const labels = ["Goal", ...displayLabels];

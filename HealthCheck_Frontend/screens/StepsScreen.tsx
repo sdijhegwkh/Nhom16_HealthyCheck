@@ -234,19 +234,23 @@ export default function StepsScreen() {
 
   // === Weekly chart with today updated ===
   const getWeeklyChartData = () => {
-    if (!weeklyData || weeklyData.length !== 7) return { data: [], labels: [] };
-    const updatedData = [...weeklyData];
-    updatedData[6] += sessionSteps; // add current session to today
-    const today = new Date();
-    const labels = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(today.getDate() - i);
-      const dayLabel = i === 0 ? `${d.getDate()} (Today)` : `${d.getDate()}`;
-      labels.push(dayLabel);
-    }
-    return { data: updatedData, labels };
-  };
+  if (!weeklyData || weeklyData.length !== 7) return { data: [], labels: [] };
+
+  const updatedData = [...weeklyData];
+  updatedData[6] += sessionSteps;
+  const today = new Date();
+  const labels: string[] = [];
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    const day = d.getDate().toString().padStart(2, "0");
+    const month = (d.getMonth() + 1).toString().padStart(2, "0");
+    labels.push(i === 0 ? `\n${day}/${month}` : `${day}/${month}`);
+  }
+
+  return { data: updatedData, labels };
+};
 
   // === Monthly chart ===
   // === Monthly chart with today updated ===
@@ -254,23 +258,23 @@ const getMonthlyChartData = () => {
   if (!monthlyData || monthlyData.length < 1) return { data: [], labels: [] };
 
   const today = new Date();
-  const labels: string[] = [];
-  const data: number[] = [];
-
-  // Chuỗi dữ liệu tháng: monthlyData cuối cùng là hôm nay
   const updatedData = [...monthlyData];
   updatedData[updatedData.length - 1] += sessionSteps;
 
-  // Tạo nhãn dựa trên ngày hôm nay và số ngày của monthlyData
+  const labels: string[] = [];
+  const data: number[] = [];
+
+  // Tạo dữ liệu từ ngày mới nhất → cũ nhất
   for (let i = updatedData.length - 1; i >= 0; i--) {
     const d = new Date();
-    d.setDate(today.getDate() - (updatedData.length - 1 - i)); // lùi ngày
-    labels.push(
-      d.getDate() === today.getDate() ? `Today(${d.getDate()})` : `${d.getDate()}`
-    );
+    d.setDate(today.getDate() - (updatedData.length - 1 - i));
+    const day = d.getDate().toString().padStart(2, "0");
+    const month = (d.getMonth() + 1).toString().padStart(2, "0");
+    labels.push(`${day}/${month}`);
     data.push(updatedData[i]);
   }
 
+  // Đảo lại để ngày gần nhất nằm đầu
   return { labels, data };
 };
 
