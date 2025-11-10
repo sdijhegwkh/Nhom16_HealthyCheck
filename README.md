@@ -95,7 +95,7 @@ Yêu cầu:
 Ứng dụng Expo Go đã cài trên điện thoại và có mạng
 Nếu cùng mạng wifi:
 ```bash
-npm expo start
+npm run start
 ```
 Mở app Expo Go → Quét mã QR
 Nếu không cùng mạng wifi:
