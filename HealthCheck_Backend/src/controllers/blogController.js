@@ -1,7 +1,7 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
-// ✅ Hàm chuyển id an toàn sang ObjectId (phòng lỗi)
+//  Hàm chuyển id  sang ObjectId
 const toObjectId = (id) => {
   try {
     return new ObjectId(id);
@@ -10,7 +10,7 @@ const toObjectId = (id) => {
   }
 };
 
-// 🧠 Lấy top 3 blog có nhiều votes nhất
+//  Lấy top 3 blog có nhiều votes nhất
 export const getTopBlogs = async (req, res) => {
   try {
     const db = getDB();
@@ -30,7 +30,7 @@ export const getTopBlogs = async (req, res) => {
   }
 };
 
-// 🧩 (Tuỳ chọn) Lấy tất cả blogs nếu bạn cần cho trang Blog.jsx
+//  Lấy tất cả blogs nếu bạn cần cho trang Blog.jsx
 export const getAllBlogs = async (req, res) => {
   try {
     const db = getDB();

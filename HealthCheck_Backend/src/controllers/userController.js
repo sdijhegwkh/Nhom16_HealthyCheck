@@ -11,20 +11,20 @@ dayjs.extend(timezone);
 dayjs.tz.setDefault('Asia/Ho_Chi_Minh');
 function toObjectId(id) {
   try {
-    // Nếu id là object có $oid
+
     if (typeof id === "object" && id.$oid) return new ObjectId(id.$oid);
     return new ObjectId(id);
   } catch {
     return null;
   }
 }
-// 🟢 Thêm user mới
+// Thêm user mới
 export async function createUser(req, res) {
   try {
     const db = getDB();
     const userData = req.body;
 
-    // Nếu bạn muốn kiểm tra dữ liệu đầu vào
+   
     if (!userData.name || !userData.email) {
       return res.status(400).json({ error: "Name and email are required" });
     }
@@ -35,7 +35,7 @@ export async function createUser(req, res) {
       id: result.insertedId,
     });
   } catch (err) {
-    console.error("❌ Error adding user:", err.message);
+    console.error(" Error adding user:", err.message);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -141,24 +141,24 @@ export async function login(req, res) {
       { expiresIn: "1h" }
     );
 
-    // TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM (UTC+7) — ĐÚNG 100%
+    
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
 
-    // DÙNG getUTC* ĐỂ LẤY NGÀY VIỆT NAM
+   
     const vnYear = nowVN.getUTCFullYear();
     const vnMonth = nowVN.getUTCMonth();
     const vnDate = nowVN.getUTCDate();
 
-    // TẠO NGÀY 00:00:00 UTC CỦA NGÀY VIỆT NAM
+    
     const vietnamStartOfDay = new Date(Date.UTC(vnYear, vnMonth, vnDate));
 
     console.log("UTC Now:", nowUTC.toISOString());
     console.log("VN Time:", nowVN.toISOString());
     console.log("VN Start of Day (UTC):", vietnamStartOfDay.toISOString());
 
-    // KIỂM TRA healthdata CHO NGÀY VIỆT NAM
+    
     const existing = await db.collection("healthdata").findOne({
       userId: new ObjectId(user._id),
       date: vietnamStartOfDay,
@@ -237,14 +237,14 @@ export async function updateStepsGoal(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
-// 🟢 Cập nhật Sleep Goal (phút)
+//  Cập nhật Sleep Goal (phút)
 export async function updateSleepGoal(req, res) {
   try {
     const { userId } = req.params;
-    const { sleepGoal } = req.body; // đơn vị: phút
+    const { sleepGoal } = req.body; 
     const db = getDB();
 
-    // Kiểm tra hợp lệ
+    
     if (!sleepGoal || sleepGoal < 60)
       return res.status(400).json({ error: "Invalid sleep goal" });
 
@@ -266,7 +266,7 @@ export async function updateSleepGoal(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
-// 🟢 Lấy thông tin user theo ID
+//  Lấy thông tin user theo ID
 export async function getUserById(req, res) {
   try {
     const { id } = req.params;
@@ -292,7 +292,7 @@ export async function getUserById(req, res) {
 export const updateWorkoutGoal = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { workoutGoal } = req.body; // ĐƠN VỊ: PHÚT
+    const { workoutGoal } = req.body; 
 
     if (!userId || workoutGoal === undefined) {
       return res.status(400).json({ message: "Missing userId or workoutGoal" });
@@ -302,7 +302,7 @@ export const updateWorkoutGoal = async (req, res) => {
 
     const result = await db.collection("user").updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { "health_goal.workoutGoal": workoutGoal } } // LƯU PHÚT
+      { $set: { "health_goal.workoutGoal": workoutGoal } } 
     );
 
     if (result.matchedCount === 0) {
@@ -320,7 +320,7 @@ export const updateWorkoutGoal = async (req, res) => {
 export const updateWaterGoal = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { waterGoal } = req.body; // ĐƠN VỊ: ml
+    const { waterGoal } = req.body; 
 
     if (!userId || waterGoal === undefined) {
       return res.status(400).json({ message: "Missing userId or waterGoal" });
@@ -343,7 +343,7 @@ export const updateWaterGoal = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-//lay bmi moi nhat
+
 export const getCurrentBMI = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -362,7 +362,7 @@ export const getCurrentBMI = async (req, res) => {
     const history = user.bodyStatsHistory || [];
     if (history.length === 0)
       return res.json({ success: true, bmi: null, height: null, weight: null });
-    // Lấy bản ghi có ngày mới nhất
+    
     const latest = history.reduce((a, b) =>
       new Date(a.date) > new Date(b.date) ? a : b
     );
@@ -412,14 +412,12 @@ export const getBMIHistory = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Kiểm tra định dạng ObjectId
     if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
       return res.status(400).json({ error: "Invalid user ID format" });
     }
 
     const db = getDB();
 
-    // Tìm user, chỉ lấy field bodyStatsHistory
     const user = await db.collection("user").findOne(
       { _id: new ObjectId(userId) },
       { projection: { bodyStatsHistory: 1 } }
@@ -429,7 +427,6 @@ export const getBMIHistory = async (req, res) => {
 
     const history = user.bodyStatsHistory || [];
 
-    // Sắp xếp theo ngày giảm dần và giới hạn 10 bản ghi gần nhất
     const sorted = history
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 10);

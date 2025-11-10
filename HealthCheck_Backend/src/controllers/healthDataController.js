@@ -1,7 +1,7 @@
 import { getDB } from "../config/db.js";
 import { ObjectId } from "mongodb";
 
-// ✅ Hàm chuyển id an toàn sang ObjectId
+//  Hàm chuyển id sang ObjectId
 const toObjectId = (id) => {
   try {
     return new ObjectId(id);
@@ -10,9 +10,7 @@ const toObjectId = (id) => {
   }
 };
 
-/* =======================================================================
- 🟢 LẤY DỮ LIỆU SỨC KHỎE (BIỂU ĐỒ NGÀY / TUẦN / THÁNG)
-======================================================================= */
+//thong ke step ngay tuan thang
 export async function getHealthStats(req, res) {
   try {
     const { userId, range } = req.query;
@@ -28,8 +26,8 @@ export async function getHealthStats(req, res) {
 
     let startDate = new Date(now);
 
-    if (range === "week") startDate.setDate(startDate.getDate() - 6); // 7 ngày
-    else if (range === "month") startDate.setDate(startDate.getDate() - 29); // 30 ngày
+    if (range === "week") startDate.setDate(startDate.getDate() - 6); 
+    else if (range === "month") startDate.setDate(startDate.getDate() - 29); 
 
     // Lấy dữ liệu từ db
     const data = await db
@@ -42,13 +40,13 @@ export async function getHealthStats(req, res) {
       .toArray();
 
     if (range === "day") {
-      // chỉ 2 cột: [actualSteps, goal]
+     
       const todayData = data.find((d) => {
         const dDate = new Date(d.date);
         return dDate.toDateString() === now.toDateString();
       });
       const actual = todayData?.steps?.stepCount || 0;
-      const goal = todayData?.steps?.goal || 10000; // nếu bạn lưu goal ở đâu đó, thay 10000 bằng giá trị thật
+      const goal = todayData?.steps?.goal || 10000; 
       return res.json({ success: true, range: "day", data: [actual, goal] });
     }
 
@@ -83,9 +81,7 @@ export async function getHealthStats(req, res) {
   }
 }
 
-/* =======================================================================
- 🟢 LẤY TẤT CẢ HEALTHDATA THEO USER (dùng khi load StepScreen)
-======================================================================= */
+//healthdata theo user
 export async function getHealthDataByUser(req, res) {
   try {
     const { userId } = req.params;
@@ -104,9 +100,7 @@ export async function getHealthDataByUser(req, res) {
   }
 }
 
-/* =======================================================================
- 🟢 CẬP NHẬT SỐ BƯỚC (khi thoát khỏi StepScreen)
-======================================================================= */
+///cap nhat step
 export async function updateStepData(req, res) {
   try {
     const { userId, stepCount, distanceKm, durationMin, burnedCalories } =
@@ -117,7 +111,7 @@ export async function updateStepData(req, res) {
       return res.status(400).json({ error: "Invalid userId" });
     }
 
-    // ✅ Xác định mốc thời gian trong ngày
+    //  Xác định mốc thời gian trong ngày
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date();
@@ -129,7 +123,7 @@ export async function updateStepData(req, res) {
     });
 
     if (existingData) {
-      console.log(`🟢 Found existing data for ${userId}, adding new values...`);
+      console.log(` Found existing data for ${userId}, adding new values...`);
       await db.collection("healthdata").updateOne(
         { _id: existingData._id },
         {
@@ -142,7 +136,7 @@ export async function updateStepData(req, res) {
         }
       );
     } else {
-      console.log(`🆕 No data for ${userId} today — creating new record.`);
+      console.log(` No data for ${userId} today — creating new record.`);
       await db.collection("healthdata").insertOne({
         userId: new ObjectId(userId),
         date: new Date(),
@@ -168,22 +162,20 @@ export async function updateStepData(req, res) {
       });
     }
 
-    res.json({ success: true, message: "✅ Steps data updated successfully" });
+    res.json({ success: true, message: "Steps data updated successfully" });
   } catch (err) {
-    console.error("❌ Update Steps Error:", err);
+    console.error(" Update Steps Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 }
 
-/* =======================================================================
- 🟢 LẤY DỮ LIỆU HÔM NAY (để load vào StepScreen)
-======================================================================= */
+//lay du lieu step
 export async function getTodayHealthData(req, res) {
   try {
     const { userId } = req.params;
     const db = getDB();
 
-    // DÙNG NGÀY VIỆT NAM (UTC+7) → ĐÚNG VỚI LOGIN
+    //xu li date
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
@@ -206,7 +198,7 @@ export async function getTodayHealthData(req, res) {
       return res.json({ 
         success: true, 
         exists: false,
-        data: { waterConsumed: 0 } // ← ĐẢM BẢO CÓ TRƯỜNG NÀY
+        data: { waterConsumed: 0 }
       });
     }
 
@@ -225,7 +217,7 @@ export async function getTodayHealthData(req, res) {
   }
 }
 
-// 💤 Cập nhật tổng thời gian ngủ
+//  Cập nhật tổng thời gian ngủ
 export const updateSleepSchedule = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -237,7 +229,7 @@ export const updateSleepSchedule = async (req, res) => {
 
     const db = getDB();
 
-    // LẤY NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM (DÙNG LÀM CỘT NGÀY TRONG DB)
+   //xu li ngay
     const nowVN = new Date(Date.now() + 7 * 60 * 60 * 1000);
     const year = nowVN.getUTCFullYear();
     const month = nowVN.getUTCMonth();
@@ -256,7 +248,7 @@ export const updateSleepSchedule = async (req, res) => {
       return res.status(404).json({ message: "Health record not found" });
     }
 
-    // === HÀM PARSE GIỜ VIỆT NAM (CHUỖI 'YYYY-MM-DD HH:mm') ===
+    // ep ve gio vn 
     const parseVNTime = (str) => {
       const [datePart, timePart] = str.split(" ");
       const [y, m, d] = datePart.split("-").map(Number);
@@ -264,7 +256,7 @@ export const updateSleepSchedule = async (req, res) => {
       return new Date(y, m - 1, d, h, min);
     };
 
-    // === XỬ LÝ & VALIDATE SESSION ===
+    // xu li sessions
     const validSessions = sessions
       .map((s) => {
         const sleepDate = parseVNTime(s.sleepTime);
@@ -280,7 +272,7 @@ export const updateSleepSchedule = async (req, res) => {
         const durationMin = Math.round((wakeDate - sleepDate) / 60000);
         if (durationMin <= 0 || durationMin > 24 * 60) return null;
 
-        // Trả lại đúng chuỗi giờ VN người dùng nhập
+        
         return {
           sleepTime: s.sleepTime,
           wakeTime: s.wakeTime,
@@ -365,7 +357,7 @@ export async function getSleepStats(req, res) {
       return res.status(400).json({ success: false, message: "Invalid params" });
     }
 
-    // === LẤY THỜI GIAN HIỆN TẠI THEO MÚI GIỜ VIỆT NAM ===
+
     const nowVN = new Date(
       new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" })
     );
@@ -381,22 +373,22 @@ export async function getSleepStats(req, res) {
 
     console.log("🇻🇳 Today VN:", todayKey);
 
-    // === TÍNH KHOẢNG NGÀY (theo giờ VN) ===
+    
     const startDateVN = new Date(nowVN);
     if (range === "week") startDateVN.setDate(startDateVN.getDate() - 6);
     else startDateVN.setDate(startDateVN.getDate() - 29);
 
-    // Chuyển mốc thời gian VN thành UTC để truy vấn DB
+   
     const startDateUTC = new Date(startDateVN.getTime() - 7 * 60 * 60 * 1000);
     const endDateUTC = new Date(nowVN.getTime() + 24 * 60 * 60 * 1000 - 7 * 60 * 60 * 1000);
 
-    console.log("🕒 Query range UTC:", {
+    console.log(" Query range UTC:", {
       start: startDateUTC.toISOString(),
       end: endDateUTC.toISOString(),
       range,
     });
 
-    // === TRUY VẤN DB ===
+    // db
     const data = await db
       .collection("healthdata")
       .find({
@@ -408,7 +400,7 @@ export async function getSleepStats(req, res) {
 
     console.log(`📊 Found ${data.length} records`);
 
-    // === NHÓM THEO NGÀY THỨC DẬY (VN TIMEZONE) ===
+    
     const recordsByVNDate = {};
 
     data.forEach((record) => {
@@ -416,7 +408,7 @@ export async function getSleepStats(req, res) {
       const lastSession = record.sleep.sessions[record.sleep.sessions.length - 1];
       if (!lastSession?.wakeTime) return;
 
-      // Chuyển wakeTime về đối tượng Date theo giờ VN
+      
       const wakeDateVN = new Date(
         new Date(lastSession.wakeTime).toLocaleString("en-US", {
           timeZone: "Asia/Ho_Chi_Minh",
@@ -433,7 +425,7 @@ export async function getSleepStats(req, res) {
 
     console.log("🗓️ Grouped by VN date:", recordsByVNDate);
 
-    // === TUẦN ===
+    // week
     if (range === "week") {
       const weekData = [];
       const weekLabels = [];
@@ -463,7 +455,7 @@ export async function getSleepStats(req, res) {
       });
     }
 
-    // === THÁNG ===
+    // month
     if (range === "month") {
       const monthData = [];
 
@@ -487,12 +479,12 @@ export async function getSleepStats(req, res) {
       });
     }
   } catch (err) {
-    console.error("❌ getSleepStats error:", err);
+    console.error(" getSleepStats error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 }
 
-// POST /healthdata/workout/schedule/:userId
+
 export const updateWorkoutSchedule = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -505,7 +497,7 @@ export const updateWorkoutSchedule = async (req, res) => {
     const db = getDB();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
 
-    // TÍNH NGÀY VIỆT NAM MỘT LẦN
+    
     const nowUTC = new Date();
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
     const yearVN = nowVN.getUTCFullYear();
@@ -515,7 +507,7 @@ export const updateWorkoutSchedule = async (req, res) => {
     const recordStart = new Date(Date.UTC(yearVN, monthVN, dayVN));
     const recordEnd = new Date(Date.UTC(yearVN, monthVN, dayVN + 1));
 
-    // TÌM HOẶC TẠO MỚI RECORD
+    
     let record = await db.collection("healthdata").findOne({
       userId: new ObjectId(userId),
       date: { $gte: recordStart, $lt: recordEnd },
@@ -540,7 +532,7 @@ export const updateWorkoutSchedule = async (req, res) => {
       record = { ...newRecord, _id: insertResult.insertedId };
     }
 
-    // CẬP NHẬT TỪNG SESSION
+   
     for (const s of sessions) {
       const durationMin = Math.round(s.durationMin);
       if (durationMin <= 0) continue;
@@ -565,7 +557,7 @@ export const updateWorkoutSchedule = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-// GET /healthdata/workout/today/:userId
+
 export const getTodayWorkoutSessions = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -613,7 +605,6 @@ export const getWorkoutStats = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid params" });
     }
 
-    // === TÍNH NGÀY HIỆN TẠI THEO GIỜ VIỆT NAM ===
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
@@ -624,7 +615,6 @@ export const getWorkoutStats = async (req, res) => {
 
     const todayKey = `${vnYear}-${String(vnMonth + 1).padStart(2, '0')}-${String(vnDate).padStart(2, '0')}`;
 
-    // === TÍNH KHOẢNG NGÀY ===
     let startDateUTC, endDateUTC;
 
     if (range === "week") {
@@ -641,7 +631,6 @@ export const getWorkoutStats = async (req, res) => {
       endDateUTC.setUTCDate(endDateUTC.getUTCDate() + 1);
     }
 
-    // === LẤY DỮ LIỆU ===
     const data = await db
       .collection("healthdata")
       .find({
@@ -651,7 +640,6 @@ export const getWorkoutStats = async (req, res) => {
       .sort({ date: 1 })
       .toArray();
 
-    // === NHÓM THEO NGÀY VIỆT NAM ===
     const recordsByVNDate = {};
 
     data.forEach(record => {
@@ -662,7 +650,7 @@ export const getWorkoutStats = async (req, res) => {
       recordsByVNDate[key] = record.workout.workDuration;
     });
 
-    // === TUẦN ===
+    // week
     if (range === "week") {
       const weekData = [];
       const weekLabels = [];
@@ -687,7 +675,7 @@ export const getWorkoutStats = async (req, res) => {
       });
     }
 
-    // === THÁNG ===
+    // month
     if (range === "month") {
   const monthData = [];
 
@@ -698,7 +686,7 @@ export const getWorkoutStats = async (req, res) => {
     const key = `${targetUTC.getUTCFullYear()}-${String(targetUTC.getUTCMonth() + 1).padStart(2, '0')}-${String(targetUTC.getUTCDate()).padStart(2, '0')}`;
     const duration = recordsByVNDate[key] || 0;
 
-    monthData.push(duration); // hôm nay ở đầu mảng
+    monthData.push(duration);
   }
 
   return res.json({
@@ -724,11 +712,11 @@ export const updateWaterConsumed = async (req, res) => {
 
     const db = getDB();
 
-    // TÌM BẢN GHI HÔM NAY (đã được tạo khi login)
+   
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 00:00:00 local → nhưng Mongo lưu UTC
+    today.setHours(0, 0, 0, 0);
 
-    // Vì login đã tạo theo ngày VN → dùng cùng logic
+   
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
@@ -766,13 +754,13 @@ export const getWaterStats = async (req, res) => {
     const db = getDB();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
 
-    // LẤY NGÀY HIỆN TẠI THEO VIỆT NAM
+    
     const nowUTC = new Date();
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
     const todayVN = new Date(Date.UTC(nowVN.getUTCFullYear(), nowVN.getUTCMonth(), nowVN.getUTCDate()));
 
     const sevenDaysAgo = new Date(todayVN);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // 7 ngày
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
 
     const records = await db.collection("healthdata")
       .find({
@@ -782,14 +770,14 @@ export const getWaterStats = async (req, res) => {
       .sort({ date: 1 })
       .toArray();
 
-    // TẠO MẢNG 7 NGÀY: 29 → 28 → ... → 23
+    
     const stats = [];
     const labels = [];
 
     for (let i = 0; i < 7; i++) {
       const date = new Date(todayVN);
       date.setDate(date.getDate() - i);
-      const dayNum = date.getUTCDate(); // 29, 28, ...
+      const dayNum = date.getUTCDate(); 
       const dateStr = date.toISOString().split("T")[0];
 
       const record = records.find(r => 
@@ -797,12 +785,12 @@ export const getWaterStats = async (req, res) => {
       );
 
       stats.push(record?.waterConsumed || 0);
-      labels.push(dayNum.toString()); // "29", "28", ...
+      labels.push(dayNum.toString()); 
     }
 
     res.json({
       success: true,
-      labels, // ["29", "28", ..., "23"]
+      labels, 
       data: stats
     });
   } catch (err) {
@@ -821,7 +809,7 @@ export const updateNutrition = async (req, res) => {
 
     const db = getDB();
 
-    // 🕐 Xác định ngày hiện tại theo múi giờ Việt Nam
+
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
@@ -830,7 +818,7 @@ export const updateNutrition = async (req, res) => {
     const vnDate = nowVN.getUTCDate();
     const startOfDayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
 
-    // 🧩 Lấy dữ liệu hiện tại trong DB
+   
     const todayData = await db.collection("healthdata").findOne({
       userId: new ObjectId(userId),
       date: startOfDayUTC,
@@ -840,17 +828,17 @@ export const updateNutrition = async (req, res) => {
       return res.status(404).json({ error: "Health data not found for today" });
     }
 
-    // 🧮 Gộp session cũ và mới
+    //  Gộp session cũ và mới
     const existingSessions = todayData.nutrition?.session || [];
     const mergedSessions = [...existingSessions, ...session];
 
-    // 🔢 Tính lại tổng nutrition từ toàn bộ session
+    //  Tính lại tổng nutrition từ toàn bộ session
     const totalCalories = mergedSessions.reduce((sum, m) => sum + (m.kcal || 0), 0);
     const totalFat = mergedSessions.reduce((sum, m) => sum + (m.fat || 0), 0);
     const totalProtein = mergedSessions.reduce((sum, m) => sum + (m.protein || 0), 0);
     const totalCarbs = mergedSessions.reduce((sum, m) => sum + (m.carbs || 0), 0);
 
-    // 📝 Cập nhật lại DB
+    // Cập nhật lại DB
     const result = await db.collection("healthdata").updateOne(
       { userId: new ObjectId(userId), date: startOfDayUTC },
       {
@@ -864,7 +852,7 @@ export const updateNutrition = async (req, res) => {
       }
     );
 
-    console.log(`🍱 Nutrition updated for user ${userId} with ${session.length} new meals`);
+    console.log(` Nutrition updated for user ${userId} with ${session.length} new meals`);
     res.json({
       success: true,
       message: "Nutrition updated successfully",
@@ -887,7 +875,7 @@ export const getTodayNutrition = async (req, res) => {
 
     const db = getDB();
 
-    // 🕐 Lấy ngày hôm nay (theo giờ VN)
+   
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
@@ -896,13 +884,13 @@ export const getTodayNutrition = async (req, res) => {
     const vnDate = nowVN.getUTCDate();
     const startOfDayUTC = new Date(Date.UTC(vnYear, vnMonth, vnDate));
 
-    // 🔹 Lấy dữ liệu dinh dưỡng hôm nay
+
     const todayData = await db.collection("healthdata").findOne({
       userId: new ObjectId(userId),
       date: startOfDayUTC,
     });
 
-    // 🔹 Lấy thông tin user (để biết caloriesGoal)
+    
     const userData = await db.collection("user").findOne({
       _id: new ObjectId(userId),
     });
@@ -911,7 +899,6 @@ export const getTodayNutrition = async (req, res) => {
       return res.status(404).json({ error: "No data found for today" });
     }
 
-    // 🧩 Dữ liệu nutrition
     const nutrition = todayData.nutrition || {
       caloriesConsumed: 0,
       totalFatGrams: 0,
@@ -920,12 +907,12 @@ export const getTodayNutrition = async (req, res) => {
       session: [],
     };
 
-    // 🎯 Tính mục tiêu dinh dưỡng dựa theo kcal goal
+    
     const goalCalories = userData.health_goal?.caloriesGoal || 2000;
 
-    const fatGoal = Math.round((goalCalories * 0.3) / 9); // 30% từ fat
-    const proteinGoal = Math.round((goalCalories * 0.2) / 4); // 20% từ protein
-    const carbGoal = Math.round((goalCalories * 0.5) / 4); // 50% từ carbs
+    const fatGoal = Math.round((goalCalories * 0.3) / 9); 
+    const proteinGoal = Math.round((goalCalories * 0.2) / 4); 
+    const carbGoal = Math.round((goalCalories * 0.5) / 4); 
 
     const nutritionGoal = {
       calorieGoal: goalCalories,
@@ -953,7 +940,7 @@ export const getLast10DaysNutrition = async (req, res) => {
 
     const db = getDB();
 
-    // Lấy thời gian hiện tại ở múi giờ VN
+
     const nowUTC = new Date();
     const vietnamOffsetMs = 7 * 60 * 60 * 1000;
     const nowVN = new Date(nowUTC.getTime() + vietnamOffsetMs);
@@ -964,27 +951,27 @@ export const getLast10DaysNutrition = async (req, res) => {
       nowVN.getUTCDate()
     ));
 
-    // Ngày bắt đầu 9 ngày trước → tổng 10 ngày
+    
     const startDate = new Date(todayVN);
     startDate.setUTCDate(todayVN.getUTCDate() - 9);
 
-    // Lấy dữ liệu từ MongoDB
+   
     const data = await db.collection("healthdata")
       .find({
         userId: new ObjectId(userId),
         date: { $gte: startDate, $lte: todayVN }
       })
-      .sort({ date: 1 }) // ngày cũ → mới
+      .sort({ date: 1 }) 
       .toArray();
 
-    // Chuyển dữ liệu thành map để lookup nhanh
+    
     const dataMap = new Map();
     data.forEach(doc => {
-      const key = doc.date.toISOString().split("T")[0]; // "YYYY-MM-DD"
+      const key = doc.date.toISOString().split("T")[0]; 
       dataMap.set(key, doc.nutrition?.caloriesConsumed || 0);
     });
 
-    // Tạo mảng 10 ngày, hôm nay là đầu tiên
+   
     const result = [];
     for (let i = 0; i < 10; i++) {
       const targetDate = new Date(todayVN);
@@ -1020,25 +1007,24 @@ export const  getMonthlyNutrition = async (req, res) => {
     ));
 
     const startDate = new Date(todayVN);
-    startDate.setUTCDate(todayVN.getUTCDate() - 29); // 30 ngày tính từ hôm nay
+    startDate.setUTCDate(todayVN.getUTCDate() - 29); 
 
-    // Lấy dữ liệu từ MongoDB
+   
     const data = await db.collection("healthdata")
       .find({
         userId: new ObjectId(userId),
         date: { $gte: startDate, $lte: todayVN }
       })
-      .sort({ date: 1 }) // từ ngày cũ → mới
+      .sort({ date: 1 }) 
       .toArray();
 
-    // Chuyển dữ liệu thành map để dễ lookup
+    
     const dataMap = new Map();
     data.forEach(doc => {
-      const key = doc.date.toISOString().split("T")[0]; // "YYYY-MM-DD"
+      const key = doc.date.toISOString().split("T")[0]; 
       dataMap.set(key, doc.nutrition?.caloriesConsumed || 0);
     });
 
-    // Tạo mảng 30 ngày, hôm nay là đầu tiên
    const result = [];
     for (let i = 0; i < 30; i++) {
       const targetDate = new Date(todayVN);
@@ -1066,7 +1052,6 @@ export const getTotalHealthData = async (req, res) => {
 
     const db = getDB();
 
-    // Lấy phạm vi thời gian của ngày hôm nay (theo UTC)
     const start = new Date();
     start.setUTCHours(0, 0, 0, 0);
     const end = new Date();
@@ -1083,7 +1068,7 @@ export const getTotalHealthData = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
-// routes/healthdata.js hoặc controller
+
 export const getWeeklyReport = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1092,11 +1077,11 @@ export const getWeeklyReport = async (req, res) => {
     const db = getDB();
     const objectId = new ObjectId(userId);
 
-    // === GIỜ VIỆT NAM HIỆN TẠI (AN TOÀN 100%) ===
+    
     const nowVN = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     console.log("VN Time (forced):", nowVN.toLocaleString('vi-VN'));
 
-    // === NGÀY HIỆN TẠI 00:00 (GIỜ VN) ===
+   
     const todayVN = new Date(
       nowVN.getFullYear(),
       nowVN.getMonth(),
@@ -1104,15 +1089,15 @@ export const getWeeklyReport = async (req, res) => {
       0, 0, 0, 0
     );
 
-    // === NGÀY MAI 00:00 (GIỜ VN) ===
+    
     const tomorrowVN = new Date(todayVN);
     tomorrowVN.setDate(tomorrowVN.getDate() + 1);
 
-    // === 7 NGÀY TRƯỚC 00:00 (GIỜ VN) ===
+   
     const sevenDaysAgoVN = new Date(todayVN);
     sevenDaysAgoVN.setDate(todayVN.getDate() - 6);
 
-    // === CHUYỂN SANG UTC ===
+    
     const startDateUTC = new Date(Date.UTC(
       sevenDaysAgoVN.getFullYear(),
       sevenDaysAgoVN.getMonth(),
@@ -1200,7 +1185,7 @@ export const updateHealthScore = async (req, res) => {
         },
       },
       { $set: { healthScore, updatedAt: new Date() } },
-      { upsert: true } // Tạo mới nếu chưa có
+      { upsert: true } 
     );
 
     res.json({
